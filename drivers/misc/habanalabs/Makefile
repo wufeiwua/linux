@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Makefile for HabanaLabs AI accelerators driver
 #
@@ -12,3 +13,6 @@ habanalabs-$(CONFIG_DEBUG_FS) += debugfs.o
 
 include $(src)/goya/Makefile
 habanalabs-y += $(HL_GOYA_FILES)
+
+include $(src)/gaudi/Makefile
+habanalabs-y += $(HL_GAUDI_FILES)

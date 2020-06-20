@@ -276,7 +276,8 @@ static int xrx200_tx_housekeeping(struct napi_struct *napi, int budget)
 	return pkts;
 }
 
-static int xrx200_start_xmit(struct sk_buff *skb, struct net_device *net_dev)
+static netdev_tx_t xrx200_start_xmit(struct sk_buff *skb,
+				     struct net_device *net_dev)
 {
 	struct xrx200_priv *priv = netdev_priv(net_dev);
 	struct xrx200_chan *ch = &priv->chan_tx;
@@ -458,17 +459,11 @@ static int xrx200_probe(struct platform_device *pdev)
 	}
 
 	priv->chan_rx.dma.irq = platform_get_irq_byname(pdev, "rx");
-	if (priv->chan_rx.dma.irq < 0) {
-		dev_err(dev, "failed to get RX IRQ, %i\n",
-			priv->chan_rx.dma.irq);
+	if (priv->chan_rx.dma.irq < 0)
 		return -ENOENT;
-	}
 	priv->chan_tx.dma.irq = platform_get_irq_byname(pdev, "tx");
-	if (priv->chan_tx.dma.irq < 0) {
-		dev_err(dev, "failed to get TX IRQ, %i\n",
-			priv->chan_tx.dma.irq);
+	if (priv->chan_tx.dma.irq < 0)
 		return -ENOENT;
-	}
 
 	/* get the clock */
 	priv->clk = devm_clk_get(dev, NULL);

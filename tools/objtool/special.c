@@ -1,18 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright (C) 2015 Josh Poimboeuf <jpoimboe@redhat.com>
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -130,7 +118,7 @@ static int get_alt_entry(struct elf *elf, struct special_entry *entry,
 		}
 	}
 
-	orig_rela = find_rela_by_dest(sec, offset + entry->orig);
+	orig_rela = find_rela_by_dest(elf, sec, offset + entry->orig);
 	if (!orig_rela) {
 		WARN_FUNC("can't find orig rela", sec, offset + entry->orig);
 		return -1;
@@ -145,7 +133,7 @@ static int get_alt_entry(struct elf *elf, struct special_entry *entry,
 	alt->orig_off = orig_rela->addend;
 
 	if (!entry->group || alt->new_len) {
-		new_rela = find_rela_by_dest(sec, offset + entry->new);
+		new_rela = find_rela_by_dest(elf, sec, offset + entry->new);
 		if (!new_rela) {
 			WARN_FUNC("can't find new rela",
 				  sec, offset + entry->new);

@@ -1,12 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* AFS cell and server record management
  *
  * Copyright (C) 2002, 2017 Red Hat, Inc. All Rights Reserved.
  * Written by David Howells (dhowells@redhat.com)
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version
- * 2 of the License, or (at your option) any later version.
  */
 
 #include <linux/slab.h>
@@ -78,6 +74,7 @@ struct afs_cell *afs_lookup_cell_rcu(struct afs_net *net,
 			cell = rcu_dereference_raw(net->ws_cell);
 			if (cell) {
 				afs_get_cell(cell);
+				ret = 0;
 				break;
 			}
 			ret = -EDESTADDRREQ;
@@ -112,6 +109,9 @@ struct afs_cell *afs_lookup_cell_rcu(struct afs_net *net,
 
 	done_seqretry(&net->cells_lock, seq);
 
+	if (ret != 0 && cell)
+		afs_put_cell(net, cell);
+
 	return ret == 0 ? cell : ERR_PTR(ret);
 }
 
@@ -134,8 +134,17 @@ static struct afs_cell *afs_alloc_cell(struct afs_net *net,
 		_leave(" = -ENAMETOOLONG");
 		return ERR_PTR(-ENAMETOOLONG);
 	}
-	if (namelen == 5 && memcmp(name, "@cell", 5) == 0)
+
+	/* Prohibit cell names that contain unprintable chars, '/' and '@' or
+	 * that begin with a dot.  This also precludes "@cell".
+	 */
+	if (name[0] == '.')
 		return ERR_PTR(-EINVAL);
+	for (i = 0; i < namelen; i++) {
+		char ch = name[i];
+		if (!isprint(ch) || ch == '/' || ch == '@')
+			return ERR_PTR(-EINVAL);
+	}
 
 	_enter("%*.*s,%s", namelen, namelen, name, addresses);
 
@@ -152,9 +161,13 @@ static struct afs_cell *afs_alloc_cell(struct afs_net *net,
 
 	atomic_set(&cell->usage, 2);
 	INIT_WORK(&cell->manager, afs_manage_cell);
-	INIT_LIST_HEAD(&cell->proc_volumes);
-	rwlock_init(&cell->proc_lock);
+	cell->volumes = RB_ROOT;
+	INIT_HLIST_HEAD(&cell->proc_volumes);
+	seqlock_init(&cell->volume_lock);
+	cell->fs_servers = RB_ROOT;
+	seqlock_init(&cell->fs_lock);
 	rwlock_init(&cell->vl_servers_lock);
+	cell->flags = (1 << AFS_CELL_FL_CHECK_ALIAS);
 
 	/* Provide a VL server list, filling it in if we were given a list of
 	 * addresses to use.
@@ -472,7 +485,9 @@ static void afs_cell_destroy(struct rcu_head *rcu)
 
 	ASSERTCMP(atomic_read(&cell->usage), ==, 0);
 
+	afs_put_volume(cell->net, cell->root_volume, afs_volume_trace_put_cell_root);
 	afs_put_vlserverlist(cell->net, rcu_access_pointer(cell->vl_servers));
+	afs_put_cell(cell->net, cell->alias_of);
 	key_put(cell->anonymous_key);
 	kfree(cell);
 

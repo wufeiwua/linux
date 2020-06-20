@@ -1,20 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2016 Broadcom
  *	Author: Jayachandran C <jchandra@broadcom.com>
  * Copyright (C) 2016 Semihalf
  * 	Author: Tomasz Nowicki <tn@semihalf.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License, version 2, as
- * published by the Free Software Foundation (the "GPL").
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License version 2 (GPLv2) for more details.
- *
- * You should have received a copy of the GNU General Public License
- * version 2 (GPLv2) along with this source code.
  */
 
 #define pr_fmt(fmt) "ACPI: " fmt
@@ -40,7 +29,7 @@ struct mcfg_fixup {
 	u32 oem_revision;
 	u16 segment;
 	struct resource bus_range;
-	struct pci_ecam_ops *ops;
+	const struct pci_ecam_ops *ops;
 	struct resource cfgres;
 };
 
@@ -176,7 +165,7 @@ static int pci_mcfg_quirk_matches(struct mcfg_fixup *f, u16 segment,
 
 static void pci_mcfg_apply_quirks(struct acpi_pci_root *root,
 				  struct resource *cfgres,
-				  struct pci_ecam_ops **ecam_ops)
+				  const struct pci_ecam_ops **ecam_ops)
 {
 #ifdef CONFIG_PCI_QUIRKS
 	u16 segment = root->segment;
@@ -202,9 +191,9 @@ static void pci_mcfg_apply_quirks(struct acpi_pci_root *root,
 static LIST_HEAD(pci_mcfg_list);
 
 int pci_mcfg_lookup(struct acpi_pci_root *root, struct resource *cfgres,
-		    struct pci_ecam_ops **ecam_ops)
+		    const struct pci_ecam_ops **ecam_ops)
 {
-	struct pci_ecam_ops *ops = &pci_generic_ecam_ops;
+	const struct pci_ecam_ops *ops = &pci_generic_ecam_ops;
 	struct resource *bus_res = &root->secondary;
 	u16 seg = root->segment;
 	struct mcfg_entry *e;

@@ -89,6 +89,22 @@ To build, save output files in a separate directory with KBUILD_OUTPUT ::
 
   $ export KBUILD_OUTPUT=/tmp/kselftest; make TARGETS="size timers" kselftest
 
+Additionally you can use the "SKIP_TARGETS" variable on the make command
+line to specify one or more targets to exclude from the TARGETS list.
+
+To run all tests but a single subsystem::
+
+  $ make -C tools/testing/selftests SKIP_TARGETS=ptrace run_tests
+
+You can specify multiple tests to skip::
+
+  $  make SKIP_TARGETS="size timers" kselftest
+
+You can also specify a restricted list of tests to run together with a
+dedicated skiplist::
+
+  $  make TARGETS="bpf breakpoints size timers" SKIP_TARGETS=bpf kselftest
+
 See the top-level tools/testing/selftests/Makefile for the list of all
 possible targets.
 
@@ -134,6 +150,29 @@ note some tests will require root privileges::
 
    $ cd kselftest
    $ ./run_kselftest.sh
+
+Packaging selftests
+===================
+
+In some cases packaging is desired, such as when tests need to run on a
+different system. To package selftests, run::
+
+   $ make -C tools/testing/selftests gen_tar
+
+This generates a tarball in the `INSTALL_PATH/kselftest-packages` directory. By
+default, `.gz` format is used. The tar format can be overridden by specifying
+a `FORMAT` make variable. Any value recognized by `tar's auto-compress`_ option
+is supported, such as::
+
+    $ make -C tools/testing/selftests gen_tar FORMAT=.xz
+
+`make gen_tar` invokes `make install` so you can use it to package a subset of
+tests by using variables specified in `Running a subset of selftests`_
+section::
+
+    $ make -C tools/testing/selftests gen_tar TARGETS="bpf" FORMAT=.xz
+
+.. _tar's auto-compress: https://www.gnu.org/software/tar/manual/html_node/gzip.html#auto_002dcompress
 
 Contributing new tests
 ======================
@@ -187,12 +226,12 @@ Test Module
 Kselftest tests the kernel from userspace.  Sometimes things need
 testing from within the kernel, one method of doing this is to create a
 test module.  We can tie the module into the kselftest framework by
-using a shell script test runner.  ``kselftest_module.sh`` is designed
+using a shell script test runner.  ``kselftest/module.sh`` is designed
 to facilitate this process.  There is also a header file provided to
 assist writing kernel modules that are for use with kselftest:
 
 - ``tools/testing/kselftest/kselftest_module.h``
-- ``tools/testing/kselftest/kselftest_module.sh``
+- ``tools/testing/kselftest/kselftest/module.sh``
 
 How to use
 ----------
@@ -231,7 +270,7 @@ A bare bones test module might look like this:
 
    #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-   #include "../tools/testing/selftests/kselftest_module.h"
+   #include "../tools/testing/selftests/kselftest/module.h"
 
    KSTM_MODULE_GLOBALS();
 
@@ -260,7 +299,7 @@ Example test script
 
     #!/bin/bash
     # SPDX-License-Identifier: GPL-2.0+
-    $(dirname $0)/../kselftest_module.sh "foo" test_foo
+    $(dirname $0)/../kselftest/module.sh "foo" test_foo
 
 
 Test Harness
@@ -285,7 +324,8 @@ Helpers
 
 .. kernel-doc:: tools/testing/selftests/kselftest_harness.h
     :functions: TH_LOG TEST TEST_SIGNAL FIXTURE FIXTURE_DATA FIXTURE_SETUP
-                FIXTURE_TEARDOWN TEST_F TEST_HARNESS_MAIN
+                FIXTURE_TEARDOWN TEST_F TEST_HARNESS_MAIN FIXTURE_VARIANT
+                FIXTURE_VARIANT_ADD
 
 Operators
 ---------

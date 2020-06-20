@@ -1,12 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* Handle vlserver selection and rotation.
  *
  * Copyright (C) 2018 Red Hat, Inc. All Rights Reserved.
  * Written by David Howells (dhowells@redhat.com)
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public Licence
- * as published by the Free Software Foundation; either version
- * 2 of the Licence, or (at your option) any later version.
  */
 
 #include <linux/kernel.h>
@@ -154,6 +150,10 @@ bool afs_select_vlserver(struct afs_vl_cursor *vc)
 		_debug("call reset");
 		vc->error = error;
 		vc->flags |= AFS_VL_CURSOR_RETRY;
+		goto next_server;
+
+	case -EOPNOTSUPP:
+		_debug("notsupp");
 		goto next_server;
 	}
 
@@ -306,8 +306,8 @@ static void afs_vl_dump_edestaddrreq(const struct afs_vl_cursor *vc)
 				pr_notice("VC:  - nr=%u/%u/%u pf=%u\n",
 					  a->nr_ipv4, a->nr_addrs, a->max_addrs,
 					  a->preferred);
-				pr_notice("VC:  - pr=%lx R=%lx F=%lx\n",
-					  a->probed, a->responded, a->failed);
+				pr_notice("VC:  - R=%lx F=%lx\n",
+					  a->responded, a->failed);
 				if (a == vc->ac.alist)
 					pr_notice("VC:  - current\n");
 			}

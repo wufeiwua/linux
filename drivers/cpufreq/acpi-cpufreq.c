@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * acpi-cpufreq.c - ACPI Processor P-States Driver
  *
@@ -5,24 +6,6 @@
  *  Copyright (C) 2001, 2002 Paul Diefenbaugh <paul.s.diefenbaugh@intel.com>
  *  Copyright (C) 2002 - 2004 Dominik Brodowski <linux@brodo.de>
  *  Copyright (C) 2006       Denis Sadykov <denis.m.sadykov@intel.com>
- *
- * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or (at
- *  your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful, but
- *  WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- *  General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
- *
- * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -47,6 +30,7 @@
 #include <asm/msr.h>
 #include <asm/processor.h>
 #include <asm/cpufeature.h>
+#include <asm/cpu_device_id.h>
 
 MODULE_AUTHOR("Paul Diefenbaugh, Dominik Brodowski");
 MODULE_DESCRIPTION("ACPI Processor P-States Driver");
@@ -142,12 +126,12 @@ static void boost_set_msr_each(void *p_en)
 	boost_set_msr(enable);
 }
 
-static int set_boost(int val)
+static int set_boost(struct cpufreq_policy *policy, int val)
 {
-	get_online_cpus();
-	on_each_cpu(boost_set_msr_each, (void *)(long)val, 1);
-	put_online_cpus();
-	pr_debug("Core Boosting %sabled.\n", val ? "en" : "dis");
+	on_each_cpu_mask(policy->cpus, boost_set_msr_each,
+			 (void *)(long)val, 1);
+	pr_debug("CPU %*pbl: Core Boosting %sabled.\n",
+		 cpumask_pr_args(policy->cpus), val ? "en" : "dis");
 
 	return 0;
 }
@@ -178,7 +162,9 @@ static ssize_t store_cpb(struct cpufreq_policy *policy, const char *buf,
 	if (ret || val > 1)
 		return -EINVAL;
 
-	set_boost(val);
+	get_online_cpus();
+	set_boost(policy, val);
+	put_online_cpus();
 
 	return count;
 }
@@ -1008,8 +994,8 @@ late_initcall(acpi_cpufreq_init);
 module_exit(acpi_cpufreq_exit);
 
 static const struct x86_cpu_id acpi_cpufreq_ids[] = {
-	X86_FEATURE_MATCH(X86_FEATURE_ACPI),
-	X86_FEATURE_MATCH(X86_FEATURE_HW_PSTATE),
+	X86_MATCH_FEATURE(X86_FEATURE_ACPI, NULL),
+	X86_MATCH_FEATURE(X86_FEATURE_HW_PSTATE, NULL),
 	{}
 };
 MODULE_DEVICE_TABLE(x86cpu, acpi_cpufreq_ids);

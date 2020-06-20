@@ -36,11 +36,6 @@ config_template=${1}
 config_dir=`echo $config_template | sed -e 's,/[^/]*$,,'`
 title=`echo $config_template | sed -e 's/^.*\///'`
 builddir=${2}
-if test -z "$builddir" -o ! -d "$builddir" -o ! -w "$builddir"
-then
-	echo "kvm-test-1-run.sh :$builddir: Not a writable directory, cannot build into it"
-	exit 1
-fi
 resdir=${3}
 if test -z "$resdir" -o ! -d "$resdir" -o ! -w "$resdir"
 then
@@ -49,30 +44,32 @@ then
 fi
 echo ' ---' `date`: Starting build
 echo ' ---' Kconfig fragment at: $config_template >> $resdir/log
-touch $resdir/ConfigFragment.input $resdir/ConfigFragment
-if test -r "$config_dir/CFcommon"
-then
-	echo " --- $config_dir/CFcommon" >> $resdir/ConfigFragment.input
-	cat < $config_dir/CFcommon >> $resdir/ConfigFragment.input
-	config_override.sh $config_dir/CFcommon $config_template > $T/Kc1
-	grep '#CHECK#' $config_dir/CFcommon >> $resdir/ConfigFragment
-else
-	cp $config_template $T/Kc1
-fi
-echo " --- $config_template" >> $resdir/ConfigFragment.input
-cat $config_template >> $resdir/ConfigFragment.input
-grep '#CHECK#' $config_template >> $resdir/ConfigFragment
-if test -n "$TORTURE_KCONFIG_ARG"
-then
-	echo $TORTURE_KCONFIG_ARG | tr -s " " "\012" > $T/cmdline
-	echo " --- --kconfig argument" >> $resdir/ConfigFragment.input
-	cat $T/cmdline >> $resdir/ConfigFragment.input
-	config_override.sh $T/Kc1 $T/cmdline > $T/Kc2
-	# Note that "#CHECK#" is not permitted on commandline.
-else
-	cp $T/Kc1 $T/Kc2
-fi
-cat $T/Kc2 >> $resdir/ConfigFragment
+touch $resdir/ConfigFragment.input
+
+# Combine additional Kconfig options into an existing set such that
+# newer options win.  The first argument is the Kconfig source ID, the
+# second the to-be-updated file within $T, and the third and final the
+# list of additional Kconfig options.  Note that a $2.tmp file is
+# created when doing the update.
+config_override_param () {
+	if test -n "$3"
+	then
+		echo $3 | sed -e 's/^ *//' -e 's/ *$//' | tr -s " " "\012" > $T/Kconfig_args
+		echo " --- $1" >> $resdir/ConfigFragment.input
+		cat $T/Kconfig_args >> $resdir/ConfigFragment.input
+		config_override.sh $T/$2 $T/Kconfig_args > $T/$2.tmp
+		mv $T/$2.tmp $T/$2
+		# Note that "#CHECK#" is not permitted on commandline.
+	fi
+}
+
+echo > $T/KcList
+config_override_param "$config_dir/CFcommon" KcList "`cat $config_dir/CFcommon 2> /dev/null`"
+config_override_param "$config_template" KcList "`cat $config_template 2> /dev/null`"
+config_override_param "--kasan options" KcList "$TORTURE_KCONFIG_KASAN_ARG"
+config_override_param "--kcsan options" KcList "$TORTURE_KCONFIG_KCSAN_ARG"
+config_override_param "--kconfig argument" KcList "$TORTURE_KCONFIG_ARG"
+cp $T/KcList $resdir/ConfigFragment
 
 base_resdir=`echo $resdir | sed -e 's/\.[0-9]\+$//'`
 if test "$base_resdir" != "$resdir" -a -f $base_resdir/bzImage -a -f $base_resdir/vmlinux
@@ -85,18 +82,18 @@ then
 	ln -s $base_resdir/.config $resdir  # for kvm-recheck.sh
 	# Arch-independent indicator
 	touch $resdir/builtkernel
-elif kvm-build.sh $T/Kc2 $builddir $resdir
+elif kvm-build.sh $T/KcList $resdir
 then
 	# Had to build a kernel for this test.
-	QEMU="`identify_qemu $builddir/vmlinux`"
+	QEMU="`identify_qemu vmlinux`"
 	BOOT_IMAGE="`identify_boot_image $QEMU`"
-	cp $builddir/vmlinux $resdir
-	cp $builddir/.config $resdir
-	cp $builddir/Module.symvers $resdir > /dev/null || :
-	cp $builddir/System.map $resdir > /dev/null || :
+	cp vmlinux $resdir
+	cp .config $resdir
+	cp Module.symvers $resdir > /dev/null || :
+	cp System.map $resdir > /dev/null || :
 	if test -n "$BOOT_IMAGE"
 	then
-		cp $builddir/$BOOT_IMAGE $resdir
+		cp $BOOT_IMAGE $resdir
 		KERNEL=$resdir/${BOOT_IMAGE##*/}
 		# Arch-independent indicator
 		touch $resdir/builtkernel
@@ -107,7 +104,7 @@ then
 	parse-build.sh $resdir/Make.out $title
 else
 	# Build failed.
-	cp $builddir/.config $resdir || :
+	cp .config $resdir || :
 	echo Build failed, not running KVM, see $resdir.
 	if test -f $builddir.wait
 	then
@@ -128,7 +125,7 @@ qemu_args=$5
 boot_args=$6
 
 cd $KVM
-kstarttime=`awk 'BEGIN { print systime() }' < /dev/null`
+kstarttime=`gawk 'BEGIN { print systime() }' < /dev/null`
 if test -z "$TORTURE_BUILDONLY"
 then
 	echo ' ---' `date`: Starting kernel
@@ -138,11 +135,10 @@ fi
 qemu_args="-enable-kvm -nographic $qemu_args"
 cpu_count=`configNR_CPUS.sh $resdir/ConfigFragment`
 cpu_count=`configfrag_boot_cpus "$boot_args" "$config_template" "$cpu_count"`
-vcpus=`identify_qemu_vcpus`
-if test $cpu_count -gt $vcpus
+if test "$cpu_count" -gt "$TORTURE_ALLOTED_CPUS"
 then
-	echo CPU count limited from $cpu_count to $vcpus | tee -a $resdir/Warnings
-	cpu_count=$vcpus
+	echo CPU count limited from $cpu_count to $TORTURE_ALLOTED_CPUS | tee -a $resdir/Warnings
+	cpu_count=$TORTURE_ALLOTED_CPUS
 fi
 qemu_args="`specify_qemu_cpus "$QEMU" "$qemu_args" "$cpu_count"`"
 
@@ -165,7 +161,7 @@ then
 fi
 echo "NOTE: $QEMU either did not run or was interactive" > $resdir/console.log
 echo $QEMU $qemu_args -m $TORTURE_QEMU_MEM -kernel $KERNEL -append \"$qemu_append $boot_args\" > $resdir/qemu-cmd
-( $QEMU $qemu_args -m $TORTURE_QEMU_MEM -kernel $KERNEL -append "$qemu_append $boot_args"& echo $! > $resdir/qemu_pid; wait `cat  $resdir/qemu_pid`; echo $? > $resdir/qemu-retval ) &
+( $QEMU $qemu_args -m $TORTURE_QEMU_MEM -kernel $KERNEL -append "$qemu_append $boot_args" > $resdir/qemu-output 2>&1 & echo $! > $resdir/qemu_pid; wait `cat  $resdir/qemu_pid`; echo $? > $resdir/qemu-retval ) &
 commandcompleted=0
 sleep 10 # Give qemu's pid a chance to reach the file
 if test -s "$resdir/qemu_pid"
@@ -182,7 +178,7 @@ do
 	then
 		qemu_pid=`cat "$resdir/qemu_pid"`
 	fi
-	kruntime=`awk 'BEGIN { print systime() - '"$kstarttime"' }' < /dev/null`
+	kruntime=`gawk 'BEGIN { print systime() - '"$kstarttime"' }' < /dev/null`
 	if test -z "$qemu_pid" || kill -0 "$qemu_pid" > /dev/null 2>&1
 	then
 		if test $kruntime -ge $seconds
@@ -218,7 +214,7 @@ then
 	oldline="`tail $resdir/console.log`"
 	while :
 	do
-		kruntime=`awk 'BEGIN { print systime() - '"$kstarttime"' }' < /dev/null`
+		kruntime=`gawk 'BEGIN { print systime() - '"$kstarttime"' }' < /dev/null`
 		if kill -0 $qemu_pid > /dev/null 2>&1
 		then
 			:
@@ -232,7 +228,7 @@ then
 			must_continue=yes
 		fi
 		last_ts="`tail $resdir/console.log | grep '^\[ *[0-9]\+\.[0-9]\+]' | tail -1 | sed -e 's/^\[ *//' -e 's/\..*$//'`"
-		if test -z "last_ts"
+		if test -z "$last_ts"
 		then
 			last_ts=0
 		fi

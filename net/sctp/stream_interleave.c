@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* SCTP kernel implementation
  * (C) Copyright Red Hat Inc. 2017
  *
@@ -5,22 +6,6 @@
  *
  * These functions implement sctp stream message interleaving, mostly
  * including I-DATA and I-FORWARD-TSN chunks process.
- *
- * This SCTP implementation is free software;
- * you can redistribute it and/or modify it under the terms of
- * the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * This SCTP implementation is distributed in the hope that it
- * will be useful, but WITHOUT ANY WARRANTY; without even the implied
- *                 ************************
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with GNU CC; see the file COPYING.  If not, see
- * <http://www.gnu.org/licenses/>.
  *
  * Please send any bug reports or fixes you make to the
  * email addresched(es):
@@ -256,9 +241,8 @@ out:
 	if (!first_frag)
 		return NULL;
 
-	retval = sctp_make_reassembled_event(sock_net(ulpq->asoc->base.sk),
-					     &ulpq->reasm, first_frag,
-					     last_frag);
+	retval = sctp_make_reassembled_event(ulpq->asoc->base.net, &ulpq->reasm,
+					     first_frag, last_frag);
 	if (retval) {
 		sin->fsn = next_fsn;
 		if (is_last) {
@@ -341,7 +325,7 @@ static struct sctp_ulpevent *sctp_intl_retrieve_reassembled(
 
 	pd_point = sctp_sk(asoc->base.sk)->pd_point;
 	if (pd_point && pd_point <= pd_len) {
-		retval = sctp_make_reassembled_event(sock_net(asoc->base.sk),
+		retval = sctp_make_reassembled_event(asoc->base.net,
 						     &ulpq->reasm,
 						     pd_first, pd_last);
 		if (retval) {
@@ -352,8 +336,7 @@ static struct sctp_ulpevent *sctp_intl_retrieve_reassembled(
 	goto out;
 
 found:
-	retval = sctp_make_reassembled_event(sock_net(asoc->base.sk),
-					     &ulpq->reasm,
+	retval = sctp_make_reassembled_event(asoc->base.net, &ulpq->reasm,
 					     first_frag, pos);
 	if (retval)
 		retval->msg_flags |= MSG_EOR;
@@ -645,7 +628,7 @@ out:
 	if (!first_frag)
 		return NULL;
 
-	retval = sctp_make_reassembled_event(sock_net(ulpq->asoc->base.sk),
+	retval = sctp_make_reassembled_event(ulpq->asoc->base.net,
 					     &ulpq->reasm_uo, first_frag,
 					     last_frag);
 	if (retval) {
@@ -731,7 +714,7 @@ static struct sctp_ulpevent *sctp_intl_retrieve_reassembled_uo(
 
 	pd_point = sctp_sk(asoc->base.sk)->pd_point;
 	if (pd_point && pd_point <= pd_len) {
-		retval = sctp_make_reassembled_event(sock_net(asoc->base.sk),
+		retval = sctp_make_reassembled_event(asoc->base.net,
 						     &ulpq->reasm_uo,
 						     pd_first, pd_last);
 		if (retval) {
@@ -742,8 +725,7 @@ static struct sctp_ulpevent *sctp_intl_retrieve_reassembled_uo(
 	goto out;
 
 found:
-	retval = sctp_make_reassembled_event(sock_net(asoc->base.sk),
-					     &ulpq->reasm_uo,
+	retval = sctp_make_reassembled_event(asoc->base.net, &ulpq->reasm_uo,
 					     first_frag, pos);
 	if (retval)
 		retval->msg_flags |= MSG_EOR;
@@ -829,7 +811,7 @@ static struct sctp_ulpevent *sctp_intl_retrieve_first_uo(struct sctp_ulpq *ulpq)
 		return NULL;
 
 out:
-	retval = sctp_make_reassembled_event(sock_net(ulpq->asoc->base.sk),
+	retval = sctp_make_reassembled_event(ulpq->asoc->base.net,
 					     &ulpq->reasm_uo, first_frag,
 					     last_frag);
 	if (retval) {
@@ -936,7 +918,7 @@ static struct sctp_ulpevent *sctp_intl_retrieve_first(struct sctp_ulpq *ulpq)
 		return NULL;
 
 out:
-	retval = sctp_make_reassembled_event(sock_net(ulpq->asoc->base.sk),
+	retval = sctp_make_reassembled_event(ulpq->asoc->base.net,
 					     &ulpq->reasm, first_frag,
 					     last_frag);
 	if (retval) {
@@ -1174,7 +1156,7 @@ static void sctp_generate_iftsn(struct sctp_outq *q, __u32 ctsn)
 
 	if (ftsn_chunk) {
 		list_add_tail(&ftsn_chunk->list, &q->control_chunk_list);
-		SCTP_INC_STATS(sock_net(asoc->base.sk), SCTP_MIB_OUTCTRLCHUNKS);
+		SCTP_INC_STATS(asoc->base.net, SCTP_MIB_OUTCTRLCHUNKS);
 	}
 }
 
@@ -1373,6 +1355,6 @@ void sctp_stream_interleave_init(struct sctp_stream *stream)
 	struct sctp_association *asoc;
 
 	asoc = container_of(stream, struct sctp_association, stream);
-	stream->si = asoc->intl_enable ? &sctp_stream_interleave_1
-				       : &sctp_stream_interleave_0;
+	stream->si = asoc->peer.intl_capable ? &sctp_stream_interleave_1
+					     : &sctp_stream_interleave_0;
 }

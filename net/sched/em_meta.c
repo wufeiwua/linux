@@ -1,10 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * net/sched/em_meta.c	Metadata ematch
- *
- *		This program is free software; you can redistribute it and/or
- *		modify it under the terms of the GNU General Public License
- *		as published by the Free Software Foundation; either version
- *		2 of the License, or (at your option) any later version.
  *
  * Authors:	Thomas Graf <tgraf@suug.ch>
  *
@@ -450,7 +446,7 @@ META_COLLECTOR(int_sk_wmem_queued)
 		*err = -1;
 		return;
 	}
-	dst->value = sk->sk_wmem_queued;
+	dst->value = READ_ONCE(sk->sk_wmem_queued);
 }
 
 META_COLLECTOR(int_sk_fwd_alloc)
@@ -525,7 +521,7 @@ META_COLLECTOR(int_sk_ack_bl)
 		*err = -1;
 		return;
 	}
-	dst->value = sk->sk_ack_backlog;
+	dst->value = READ_ONCE(sk->sk_ack_backlog);
 }
 
 META_COLLECTOR(int_sk_max_ack_bl)
@@ -536,7 +532,7 @@ META_COLLECTOR(int_sk_max_ack_bl)
 		*err = -1;
 		return;
 	}
-	dst->value = sk->sk_max_ack_backlog;
+	dst->value = READ_ONCE(sk->sk_max_ack_backlog);
 }
 
 META_COLLECTOR(int_sk_prio)
@@ -558,7 +554,7 @@ META_COLLECTOR(int_sk_rcvlowat)
 		*err = -1;
 		return;
 	}
-	dst->value = sk->sk_rcvlowat;
+	dst->value = READ_ONCE(sk->sk_rcvlowat);
 }
 
 META_COLLECTOR(int_sk_rcvtimeo)

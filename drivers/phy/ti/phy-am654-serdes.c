@@ -77,6 +77,7 @@ static struct regmap_config serdes_am654_regmap_config = {
 	.val_bits = 32,
 	.reg_stride = 4,
 	.fast_io = true,
+	.max_register = 0x1ffc,
 };
 
 static const struct reg_field cmu_master_cdn_o = REG_FIELD(CMU_R07C, 24, 24);
@@ -200,9 +201,91 @@ static int serdes_am654_power_off(struct phy *x)
 	return 0;
 }
 
-static int serdes_am654_init(struct phy *x)
+#define SERDES_AM654_CFG(offset, a, b, val) \
+	regmap_update_bits(phy->regmap, (offset),\
+			   GENMASK((a), (b)), (val) << (b))
+
+static int serdes_am654_usb3_init(struct serdes_am654 *phy)
 {
-	struct serdes_am654 *phy = phy_get_drvdata(x);
+	SERDES_AM654_CFG(0x0000, 31, 24, 0x17);
+	SERDES_AM654_CFG(0x0004, 15, 8, 0x02);
+	SERDES_AM654_CFG(0x0004, 7, 0, 0x0e);
+	SERDES_AM654_CFG(0x0008, 23, 16, 0x2e);
+	SERDES_AM654_CFG(0x0008, 31, 24, 0x2e);
+	SERDES_AM654_CFG(0x0060, 7, 0, 0x4b);
+	SERDES_AM654_CFG(0x0060, 15, 8, 0x98);
+	SERDES_AM654_CFG(0x0060, 23, 16, 0x60);
+	SERDES_AM654_CFG(0x00d0, 31, 24, 0x45);
+	SERDES_AM654_CFG(0x00e8, 15, 8, 0x0e);
+	SERDES_AM654_CFG(0x0220, 7, 0, 0x34);
+	SERDES_AM654_CFG(0x0220, 15, 8, 0x34);
+	SERDES_AM654_CFG(0x0220, 31, 24, 0x37);
+	SERDES_AM654_CFG(0x0224, 7, 0, 0x37);
+	SERDES_AM654_CFG(0x0224, 15, 8, 0x37);
+	SERDES_AM654_CFG(0x0228, 23, 16, 0x37);
+	SERDES_AM654_CFG(0x0228, 31, 24, 0x37);
+	SERDES_AM654_CFG(0x022c, 7, 0, 0x37);
+	SERDES_AM654_CFG(0x022c, 15, 8, 0x37);
+	SERDES_AM654_CFG(0x0230, 15, 8, 0x2a);
+	SERDES_AM654_CFG(0x0230, 23, 16, 0x2a);
+	SERDES_AM654_CFG(0x0240, 23, 16, 0x10);
+	SERDES_AM654_CFG(0x0240, 31, 24, 0x34);
+	SERDES_AM654_CFG(0x0244, 7, 0, 0x40);
+	SERDES_AM654_CFG(0x0244, 23, 16, 0x34);
+	SERDES_AM654_CFG(0x0248, 15, 8, 0x0d);
+	SERDES_AM654_CFG(0x0258, 15, 8, 0x16);
+	SERDES_AM654_CFG(0x0258, 23, 16, 0x84);
+	SERDES_AM654_CFG(0x0258, 31, 24, 0xf2);
+	SERDES_AM654_CFG(0x025c, 7, 0, 0x21);
+	SERDES_AM654_CFG(0x0260, 7, 0, 0x27);
+	SERDES_AM654_CFG(0x0260, 15, 8, 0x04);
+	SERDES_AM654_CFG(0x0268, 15, 8, 0x04);
+	SERDES_AM654_CFG(0x0288, 15, 8, 0x2c);
+	SERDES_AM654_CFG(0x0330, 31, 24, 0xa0);
+	SERDES_AM654_CFG(0x0338, 23, 16, 0x03);
+	SERDES_AM654_CFG(0x0338, 31, 24, 0x00);
+	SERDES_AM654_CFG(0x033c, 7, 0, 0x00);
+	SERDES_AM654_CFG(0x0344, 31, 24, 0x18);
+	SERDES_AM654_CFG(0x034c, 7, 0, 0x18);
+	SERDES_AM654_CFG(0x039c, 23, 16, 0x3b);
+	SERDES_AM654_CFG(0x0a04, 7, 0, 0x03);
+	SERDES_AM654_CFG(0x0a14, 31, 24, 0x3c);
+	SERDES_AM654_CFG(0x0a18, 15, 8, 0x3c);
+	SERDES_AM654_CFG(0x0a38, 7, 0, 0x3e);
+	SERDES_AM654_CFG(0x0a38, 15, 8, 0x3e);
+	SERDES_AM654_CFG(0x0ae0, 7, 0, 0x07);
+	SERDES_AM654_CFG(0x0b6c, 23, 16, 0xcd);
+	SERDES_AM654_CFG(0x0b6c, 31, 24, 0x04);
+	SERDES_AM654_CFG(0x0b98, 23, 16, 0x03);
+	SERDES_AM654_CFG(0x1400, 7, 0, 0x3f);
+	SERDES_AM654_CFG(0x1404, 23, 16, 0x6f);
+	SERDES_AM654_CFG(0x1404, 31, 24, 0x6f);
+	SERDES_AM654_CFG(0x140c, 7, 0, 0x6f);
+	SERDES_AM654_CFG(0x140c, 15, 8, 0x6f);
+	SERDES_AM654_CFG(0x1410, 15, 8, 0x27);
+	SERDES_AM654_CFG(0x1414, 7, 0, 0x0c);
+	SERDES_AM654_CFG(0x1414, 23, 16, 0x07);
+	SERDES_AM654_CFG(0x1418, 23, 16, 0x40);
+	SERDES_AM654_CFG(0x141c, 7, 0, 0x00);
+	SERDES_AM654_CFG(0x141c, 15, 8, 0x1f);
+	SERDES_AM654_CFG(0x1428, 31, 24, 0x08);
+	SERDES_AM654_CFG(0x1434, 31, 24, 0x00);
+	SERDES_AM654_CFG(0x1444, 7, 0, 0x94);
+	SERDES_AM654_CFG(0x1460, 31, 24, 0x7f);
+	SERDES_AM654_CFG(0x1464, 7, 0, 0x43);
+	SERDES_AM654_CFG(0x1464, 23, 16, 0x6f);
+	SERDES_AM654_CFG(0x1464, 31, 24, 0x43);
+	SERDES_AM654_CFG(0x1484, 23, 16, 0x8f);
+	SERDES_AM654_CFG(0x1498, 7, 0, 0x4f);
+	SERDES_AM654_CFG(0x1498, 23, 16, 0x4f);
+	SERDES_AM654_CFG(0x007c, 31, 24, 0x0d);
+	SERDES_AM654_CFG(0x0b90, 15, 8, 0x0f);
+
+	return 0;
+}
+
+static int serdes_am654_pcie_init(struct serdes_am654 *phy)
+{
 	int ret;
 
 	ret = regmap_field_write(phy->config_version, VERSION);
@@ -220,10 +303,27 @@ static int serdes_am654_init(struct phy *x)
 	return 0;
 }
 
+static int serdes_am654_init(struct phy *x)
+{
+	struct serdes_am654 *phy = phy_get_drvdata(x);
+
+	switch (phy->type) {
+	case PHY_TYPE_PCIE:
+		return serdes_am654_pcie_init(phy);
+	case PHY_TYPE_USB3:
+		return serdes_am654_usb3_init(phy);
+	default:
+		return -EINVAL;
+	}
+}
+
 static int serdes_am654_reset(struct phy *x)
 {
 	struct serdes_am654 *phy = phy_get_drvdata(x);
 	int ret;
+
+	serdes_am654_disable_pll(phy);
+	serdes_am654_disable_txrx(phy);
 
 	ret = regmap_field_write(phy->por_en, 0x1);
 	if (ret)
@@ -247,8 +347,8 @@ static void serdes_am654_release(struct phy *x)
 	mux_control_deselect(phy->control);
 }
 
-struct phy *serdes_am654_xlate(struct device *dev, struct of_phandle_args
-				 *args)
+static struct phy *serdes_am654_xlate(struct device *dev,
+				      struct of_phandle_args *args)
 {
 	struct serdes_am654 *am654_phy;
 	struct phy *phy;
@@ -335,6 +435,7 @@ static int serdes_am654_clk_mux_set_parent(struct clk_hw *hw, u8 index)
 {
 	struct serdes_am654_clk_mux *mux = to_serdes_am654_clk_mux(hw);
 	struct regmap *regmap = mux->regmap;
+	const char *name = clk_hw_get_name(hw);
 	unsigned int reg = mux->reg;
 	int clk_id = mux->clk_id;
 	int parents[SERDES_NUM_CLOCKS];
@@ -374,8 +475,7 @@ static int serdes_am654_clk_mux_set_parent(struct clk_hw *hw, u8 index)
 		 * This can never happen, unless we missed
 		 * a valid combination in serdes_am654_mux_table.
 		 */
-		WARN(1, "Failed to find the parent of %s clock\n",
-		     hw->init->name);
+		WARN(1, "Failed to find the parent of %s clock\n", name);
 		return -EINVAL;
 	}
 
@@ -405,6 +505,7 @@ static int serdes_am654_clk_register(struct serdes_am654 *am654_phy,
 	const __be32 *addr;
 	unsigned int reg;
 	struct clk *clk;
+	int ret = 0;
 
 	mux = devm_kzalloc(dev, sizeof(*mux), GFP_KERNEL);
 	if (!mux)
@@ -413,34 +514,40 @@ static int serdes_am654_clk_register(struct serdes_am654 *am654_phy,
 	init = &mux->clk_data;
 
 	regmap_node = of_parse_phandle(node, "ti,serdes-clk", 0);
-	of_node_put(regmap_node);
 	if (!regmap_node) {
 		dev_err(dev, "Fail to get serdes-clk node\n");
-		return -ENODEV;
+		ret = -ENODEV;
+		goto out_put_node;
 	}
 
 	regmap = syscon_node_to_regmap(regmap_node->parent);
 	if (IS_ERR(regmap)) {
 		dev_err(dev, "Fail to get Syscon regmap\n");
-		return PTR_ERR(regmap);
+		ret = PTR_ERR(regmap);
+		goto out_put_node;
 	}
 
 	num_parents = of_clk_get_parent_count(node);
 	if (num_parents < 2) {
 		dev_err(dev, "SERDES clock must have parents\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out_put_node;
 	}
 
 	parent_names = devm_kzalloc(dev, (sizeof(char *) * num_parents),
 				    GFP_KERNEL);
-	if (!parent_names)
-		return -ENOMEM;
+	if (!parent_names) {
+		ret = -ENOMEM;
+		goto out_put_node;
+	}
 
 	of_clk_parent_fill(node, parent_names, num_parents);
 
 	addr = of_get_address(regmap_node, 0, NULL, NULL);
-	if (!addr)
-		return -EINVAL;
+	if (!addr) {
+		ret = -EINVAL;
+		goto out_put_node;
+	}
 
 	reg = be32_to_cpu(*addr);
 
@@ -456,12 +563,16 @@ static int serdes_am654_clk_register(struct serdes_am654 *am654_phy,
 	mux->hw.init = init;
 
 	clk = devm_clk_register(dev, &mux->hw);
-	if (IS_ERR(clk))
-		return PTR_ERR(clk);
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
+		goto out_put_node;
+	}
 
 	am654_phy->clks[clock_num] = clk;
 
-	return 0;
+out_put_node:
+	of_node_put(regmap_node);
+	return ret;
 }
 
 static const struct of_device_id serdes_am654_id_table[] = {

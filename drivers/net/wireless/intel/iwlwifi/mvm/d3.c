@@ -5,10 +5,9 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
+ * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -28,10 +27,9 @@
  *
  * BSD LICENSE
  *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
+ * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -79,9 +77,6 @@ void iwl_mvm_set_rekey_data(struct ieee80211_hw *hw,
 {
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-
-	if (iwlwifi_mod_params.swcrypto)
-		return;
 
 	mutex_lock(&mvm->mutex);
 
@@ -398,8 +393,7 @@ static int iwl_mvm_send_patterns_v1(struct iwl_mvm *mvm,
 	if (!wowlan->n_patterns)
 		return 0;
 
-	cmd.len[0] = sizeof(*pattern_cmd) +
-		wowlan->n_patterns * sizeof(struct iwl_wowlan_pattern_v1);
+	cmd.len[0] = struct_size(pattern_cmd, patterns, wowlan->n_patterns);
 
 	pattern_cmd = kmalloc(cmd.len[0], GFP_KERNEL);
 	if (!pattern_cmd)
@@ -736,40 +730,16 @@ iwl_mvm_get_wowlan_config(struct iwl_mvm *mvm,
 	return 0;
 }
 
-static void
-iwl_mvm_iter_d0i3_ap_keys(struct iwl_mvm *mvm,
-			  struct ieee80211_vif *vif,
-			  void (*iter)(struct ieee80211_hw *hw,
-				       struct ieee80211_vif *vif,
-				       struct ieee80211_sta *sta,
-				       struct ieee80211_key_conf *key,
-				       void *data),
-			  void *data)
-{
-	struct ieee80211_sta *ap_sta;
-
-	rcu_read_lock();
-
-	ap_sta = rcu_dereference(mvm->fw_id_to_mac_id[mvm->d0i3_ap_sta_id]);
-	if (IS_ERR_OR_NULL(ap_sta))
-		goto out;
-
-	ieee80211_iter_keys_rcu(mvm->hw, vif, iter, data);
-out:
-	rcu_read_unlock();
-}
-
-int iwl_mvm_wowlan_config_key_params(struct iwl_mvm *mvm,
-				     struct ieee80211_vif *vif,
-				     bool d0i3,
-				     u32 cmd_flags)
+static int iwl_mvm_wowlan_config_key_params(struct iwl_mvm *mvm,
+					    struct ieee80211_vif *vif,
+					    u32 cmd_flags)
 {
 	struct iwl_wowlan_kek_kck_material_cmd kek_kck_cmd = {};
 	struct iwl_wowlan_tkip_params_cmd tkip_cmd = {};
 	bool unified = fw_has_capa(&mvm->fw->ucode_capa,
 				   IWL_UCODE_TLV_CAPA_CNSLDTD_D3_D0_IMG);
 	struct wowlan_key_data key_data = {
-		.configure_keys = !d0i3 && !unified,
+		.configure_keys = !unified,
 		.use_rsc_tsc = false,
 		.tkip = &tkip_cmd,
 		.use_tkip = false,
@@ -785,25 +755,16 @@ int iwl_mvm_wowlan_config_key_params(struct iwl_mvm *mvm,
 	 * if we have to configure keys, call ieee80211_iter_keys(),
 	 * as we need non-atomic context in order to take the
 	 * required locks.
-	 * for the d0i3 we can't use ieee80211_iter_keys(), as
-	 * taking (almost) any mutex might result in deadlock.
 	 */
-	if (!d0i3) {
-		/*
-		 * Note that currently we don't propagate cmd_flags
-		 * to the iterator. In case of key_data.configure_keys,
-		 * all the configured commands are SYNC, and
-		 * iwl_mvm_wowlan_program_keys() will take care of
-		 * locking/unlocking mvm->mutex.
-		 */
-		ieee80211_iter_keys(mvm->hw, vif,
-				    iwl_mvm_wowlan_program_keys,
-				    &key_data);
-	} else {
-		iwl_mvm_iter_d0i3_ap_keys(mvm, vif,
-					  iwl_mvm_wowlan_program_keys,
-					  &key_data);
-	}
+	/*
+	 * Note that currently we don't propagate cmd_flags
+	 * to the iterator. In case of key_data.configure_keys,
+	 * all the configured commands are SYNC, and
+	 * iwl_mvm_wowlan_program_keys() will take care of
+	 * locking/unlocking mvm->mutex.
+	 */
+	ieee80211_iter_keys(mvm->hw, vif, iwl_mvm_wowlan_program_keys,
+			    &key_data);
 
 	if (key_data.error) {
 		ret = -EIO;
@@ -831,7 +792,7 @@ int iwl_mvm_wowlan_config_key_params(struct iwl_mvm *mvm,
 	}
 
 	/* configure rekey data only if offloaded rekey is supported (d3) */
-	if (mvmvif->rekey_data.valid && !d0i3) {
+	if (mvmvif->rekey_data.valid) {
 		memset(&kek_kck_cmd, 0, sizeof(kek_kck_cmd));
 		memcpy(kek_kck_cmd.kck, mvmvif->rekey_data.kck,
 		       NL80211_KCK_LEN);
@@ -865,6 +826,8 @@ iwl_mvm_wowlan_config(struct iwl_mvm *mvm,
 	bool unified_image = fw_has_capa(&mvm->fw->ucode_capa,
 					 IWL_UCODE_TLV_CAPA_CNSLDTD_D3_D0_IMG);
 
+	mvm->offload_tid = wowlan_config_cmd->offloading_tid;
+
 	if (!unified_image) {
 		ret = iwl_mvm_switch_to_d3(mvm);
 		if (ret)
@@ -875,19 +838,16 @@ iwl_mvm_wowlan_config(struct iwl_mvm *mvm,
 			return ret;
 	}
 
-	if (!iwlwifi_mod_params.swcrypto) {
-		/*
-		 * This needs to be unlocked due to lock ordering
-		 * constraints. Since we're in the suspend path
-		 * that isn't really a problem though.
-		 */
-		mutex_unlock(&mvm->mutex);
-		ret = iwl_mvm_wowlan_config_key_params(mvm, vif, false,
-						       CMD_ASYNC);
-		mutex_lock(&mvm->mutex);
-		if (ret)
-			return ret;
-	}
+	/*
+	 * This needs to be unlocked due to lock ordering
+	 * constraints. Since we're in the suspend path
+	 * that isn't really a problem though.
+	 */
+	mutex_unlock(&mvm->mutex);
+	ret = iwl_mvm_wowlan_config_key_params(mvm, vif, CMD_ASYNC);
+	mutex_lock(&mvm->mutex);
+	if (ret)
+		return ret;
 
 	ret = iwl_mvm_send_cmd_pdu(mvm, WOWLAN_CONFIGURATION, 0,
 				   sizeof(*wowlan_config_cmd),
@@ -936,6 +896,8 @@ iwl_mvm_netdetect_config(struct iwl_mvm *mvm,
 	if (wowlan->rfkill_release)
 		wowlan_config_cmd.wakeup_filter |=
 			cpu_to_le32(IWL_WOWLAN_WAKEUP_RF_KILL_DEASSERT);
+
+	wowlan_config_cmd.sta_id = mvm->aux_sta.sta_id;
 
 	ret = iwl_mvm_send_cmd_pdu(mvm, WOWLAN_CONFIGURATION, 0,
 				   sizeof(wowlan_config_cmd),
@@ -1020,6 +982,8 @@ static int __iwl_mvm_suspend(struct ieee80211_hw *hw,
 
 	mutex_lock(&mvm->mutex);
 
+	set_bit(IWL_MVM_STATUS_IN_D3, &mvm->status);
+
 	vif = iwl_mvm_get_bss_vif(mvm);
 	if (IS_ERR_OR_NULL(vif)) {
 		ret = 1;
@@ -1043,6 +1007,8 @@ static int __iwl_mvm_suspend(struct ieee80211_hw *hw,
 		mvm->net_detect = true;
 	} else {
 		struct iwl_wowlan_config_cmd wowlan_config_cmd = {};
+
+		wowlan_config_cmd.sta_id = mvmvif->ap_sta_id;
 
 		ap_sta = rcu_dereference_protected(
 			mvm->fw_id_to_mac_id[mvmvif->ap_sta_id],
@@ -1079,11 +1045,12 @@ static int __iwl_mvm_suspend(struct ieee80211_hw *hw,
 #endif
 
 	/*
-	 * TODO: this is needed because the firmware is not stopping
-	 * the recording automatically before entering D3.  This can
-	 * be removed once the FW starts doing that.
+	 * Prior to 9000 device family the driver needs to stop the dbg
+	 * recording before entering D3. In later devices the FW stops the
+	 * recording automatically.
 	 */
-	_iwl_fw_dbg_stop_recording(mvm->fwrt.trans, NULL);
+	if (mvm->trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_9000)
+		iwl_fw_dbg_stop_restart_recording(&mvm->fwrt, NULL, true);
 
 	/* must be last -- this switches firmware state */
 	ret = iwl_mvm_send_cmd(mvm, &d3_cfg_cmd);
@@ -1100,45 +1067,23 @@ static int __iwl_mvm_suspend(struct ieee80211_hw *hw,
 
 	clear_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status);
 
-	iwl_trans_d3_suspend(mvm->trans, test, !unified_image);
+	ret = iwl_trans_d3_suspend(mvm->trans, test, !unified_image);
  out:
 	if (ret < 0) {
 		iwl_mvm_free_nd(mvm);
 
 		if (!unified_image) {
-			iwl_mvm_ref(mvm, IWL_MVM_REF_UCODE_DOWN);
 			if (mvm->fw_restart > 0) {
 				mvm->fw_restart--;
 				ieee80211_restart_hw(mvm->hw);
 			}
 		}
+
+		clear_bit(IWL_MVM_STATUS_IN_D3, &mvm->status);
 	}
  out_noreset:
 	mutex_unlock(&mvm->mutex);
 
-	return ret;
-}
-
-static int iwl_mvm_enter_d0i3_sync(struct iwl_mvm *mvm)
-{
-	struct iwl_notification_wait wait_d3;
-	static const u16 d3_notif[] = { D3_CONFIG_CMD };
-	int ret;
-
-	iwl_init_notification_wait(&mvm->notif_wait, &wait_d3,
-				   d3_notif, ARRAY_SIZE(d3_notif),
-				   NULL, NULL);
-
-	ret = iwl_mvm_enter_d0i3(mvm->hw->priv);
-	if (ret)
-		goto remove_notif;
-
-	ret = iwl_wait_notification(&mvm->notif_wait, &wait_d3, HZ);
-	WARN_ON_ONCE(ret);
-	return ret;
-
-remove_notif:
-	iwl_remove_notification(&mvm->notif_wait, &wait_d3);
 	return ret;
 }
 
@@ -1148,8 +1093,6 @@ int iwl_mvm_suspend(struct ieee80211_hw *hw, struct cfg80211_wowlan *wowlan)
 	struct iwl_trans *trans = mvm->trans;
 	int ret;
 
-	/* make sure the d0i3 exit work is not pending */
-	flush_work(&mvm->d0i3_exit_work);
 	iwl_mvm_pause_tcm(mvm, true);
 
 	iwl_fw_runtime_suspend(&mvm->fwrt);
@@ -1157,25 +1100,6 @@ int iwl_mvm_suspend(struct ieee80211_hw *hw, struct cfg80211_wowlan *wowlan)
 	ret = iwl_trans_suspend(trans);
 	if (ret)
 		return ret;
-
-	if (wowlan->any) {
-		trans->system_pm_mode = IWL_PLAT_PM_MODE_D0I3;
-
-		if (iwl_mvm_enter_d0i3_on_suspend(mvm)) {
-			ret = iwl_mvm_enter_d0i3_sync(mvm);
-
-			if (ret)
-				return ret;
-		}
-
-		mutex_lock(&mvm->d0i3_suspend_mutex);
-		__set_bit(D0I3_DEFER_WAKEUP, &mvm->d0i3_suspend_flags);
-		mutex_unlock(&mvm->d0i3_suspend_mutex);
-
-		iwl_trans_d3_suspend(trans, false, false);
-
-		return 0;
-	}
 
 	trans->system_pm_mode = IWL_PLAT_PM_MODE_D3;
 
@@ -1586,12 +1510,14 @@ out:
 
 struct iwl_wowlan_status *iwl_mvm_send_wowlan_get_status(struct iwl_mvm *mvm)
 {
-	struct iwl_wowlan_status *v7, *status;
+	struct iwl_wowlan_status_v7 *v7;
+	struct iwl_wowlan_status *status;
 	struct iwl_host_cmd cmd = {
 		.id = WOWLAN_GET_STATUSES,
 		.flags = CMD_WANT_SKB,
 	};
-	int ret, len, status_size;
+	int ret, len, status_size, data_size;
+	u8 notif_ver;
 
 	lockdep_assert_held(&mvm->mutex);
 
@@ -1601,13 +1527,12 @@ struct iwl_wowlan_status *iwl_mvm_send_wowlan_get_status(struct iwl_mvm *mvm)
 		return ERR_PTR(ret);
 	}
 
+	len = iwl_rx_packet_payload_len(cmd.resp_pkt);
 	if (!fw_has_api(&mvm->fw->ucode_capa,
 			IWL_UCODE_TLV_API_WOWLAN_KEY_MATERIAL)) {
 		struct iwl_wowlan_status_v6 *v6 = (void *)cmd.resp_pkt->data;
-		int data_size;
 
 		status_size = sizeof(*v6);
-		len = iwl_rx_packet_payload_len(cmd.resp_pkt);
 
 		if (len < status_size) {
 			IWL_ERR(mvm, "Invalid WoWLAN status response!\n");
@@ -1662,23 +1587,33 @@ struct iwl_wowlan_status *iwl_mvm_send_wowlan_get_status(struct iwl_mvm *mvm)
 	}
 
 	v7 = (void *)cmd.resp_pkt->data;
-	status_size = sizeof(*v7);
-	len = iwl_rx_packet_payload_len(cmd.resp_pkt);
+	notif_ver = iwl_fw_lookup_notif_ver(mvm->fw, LEGACY_GROUP,
+					    WOWLAN_GET_STATUSES, 0);
+
+	status_size = sizeof(*status);
+
+	if (notif_ver == IWL_FW_CMD_VER_UNKNOWN || notif_ver < 9)
+		status_size = sizeof(*v7);
 
 	if (len < status_size) {
 		IWL_ERR(mvm, "Invalid WoWLAN status response!\n");
 		status = ERR_PTR(-EIO);
 		goto out_free_resp;
 	}
+	data_size = ALIGN(le32_to_cpu(v7->wake_packet_bufsize), 4);
 
-	if (len != (status_size +
-		    ALIGN(le32_to_cpu(v7->wake_packet_bufsize), 4))) {
+	if (len != (status_size + data_size)) {
 		IWL_ERR(mvm, "Invalid WoWLAN status response!\n");
 		status = ERR_PTR(-EIO);
 		goto out_free_resp;
 	}
 
-	status = kmemdup(v7, len, GFP_KERNEL);
+	status = kzalloc(sizeof(*status) + data_size, GFP_KERNEL);
+	if (!status)
+		goto out_free_resp;
+
+	memcpy(status, v7, status_size);
+	memcpy(status->wake_packet, (u8 *)v7 + status_size, data_size);
 
 out_free_resp:
 	iwl_free_resp(&cmd);
@@ -1735,6 +1670,13 @@ static bool iwl_mvm_query_wakeup_reasons(struct iwl_mvm *mvm,
 		mvm_ap_sta->tid_data[i].seq_number = seq;
 	}
 
+	if (mvm->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000) {
+		i = mvm->offload_tid;
+		iwl_trans_set_q_ptrs(mvm->trans,
+				     mvm_ap_sta->tid_data[i].txq_id,
+				     mvm_ap_sta->tid_data[i].seq_number >> 4);
+	}
+
 	/* now we have all the data we need, unlock to avoid mac80211 issues */
 	mutex_unlock(&mvm->mutex);
 
@@ -1750,30 +1692,6 @@ out_free:
 out_unlock:
 	mutex_unlock(&mvm->mutex);
 	return false;
-}
-
-void iwl_mvm_d0i3_update_keys(struct iwl_mvm *mvm,
-			      struct ieee80211_vif *vif,
-			      struct iwl_wowlan_status *status)
-{
-	struct iwl_mvm_d3_gtk_iter_data gtkdata = {
-		.mvm = mvm,
-		.status = status,
-	};
-
-	/*
-	 * rekey handling requires taking locks that can't be taken now.
-	 * however, d0i3 doesn't offload rekey, so we're fine.
-	 */
-	if (WARN_ON_ONCE(status->num_of_gtk_rekeys))
-		return;
-
-	/* find last GTK that we used initially, if any */
-	gtkdata.find_phase = true;
-	iwl_mvm_iter_d0i3_ap_keys(mvm, vif, iwl_mvm_d3_update_keys, &gtkdata);
-
-	gtkdata.find_phase = false;
-	iwl_mvm_iter_d0i3_ap_keys(mvm, vif, iwl_mvm_d3_update_keys, &gtkdata);
 }
 
 #define ND_QUERY_BUF_LEN (sizeof(struct iwl_scan_offload_profile_match) * \
@@ -1795,6 +1713,7 @@ iwl_mvm_netdetect_query_results(struct iwl_mvm *mvm,
 	};
 	int ret, len;
 	size_t query_len, matches_len;
+	int max_profiles = iwl_umac_scan_get_max_profiles(mvm->fw);
 
 	ret = iwl_mvm_send_cmd(mvm, &cmd);
 	if (ret) {
@@ -1806,11 +1725,11 @@ iwl_mvm_netdetect_query_results(struct iwl_mvm *mvm,
 		       IWL_UCODE_TLV_API_SCAN_OFFLOAD_CHANS)) {
 		query_len = sizeof(struct iwl_scan_offload_profiles_query);
 		matches_len = sizeof(struct iwl_scan_offload_profile_match) *
-			IWL_SCAN_MAX_PROFILES;
+			max_profiles;
 	} else {
 		query_len = sizeof(struct iwl_scan_offload_profiles_query_v1);
 		matches_len = sizeof(struct iwl_scan_offload_profile_match_v1) *
-			IWL_SCAN_MAX_PROFILES;
+			max_profiles;
 	}
 
 	len = iwl_rx_packet_payload_len(cmd.resp_pkt);
@@ -1972,26 +1891,6 @@ out:
 	}
 }
 
-static void iwl_mvm_read_d3_sram(struct iwl_mvm *mvm)
-{
-#ifdef CONFIG_IWLWIFI_DEBUGFS
-	const struct fw_img *img = &mvm->fw->img[IWL_UCODE_WOWLAN];
-	u32 len = img->sec[IWL_UCODE_SECTION_DATA].len;
-	u32 offs = img->sec[IWL_UCODE_SECTION_DATA].offset;
-
-	if (!mvm->store_d3_resume_sram)
-		return;
-
-	if (!mvm->d3_resume_sram) {
-		mvm->d3_resume_sram = kzalloc(len, GFP_KERNEL);
-		if (!mvm->d3_resume_sram)
-			return;
-	}
-
-	iwl_trans_read_mem_bytes(mvm->trans, offs, mvm->d3_resume_sram, len);
-#endif
-}
-
 static void iwl_mvm_d3_disconnect_iter(void *data, u8 *mac,
 				       struct ieee80211_vif *vif)
 {
@@ -2003,27 +1902,55 @@ static void iwl_mvm_d3_disconnect_iter(void *data, u8 *mac,
 		ieee80211_resume_disconnect(vif);
 }
 
-static int iwl_mvm_check_rt_status(struct iwl_mvm *mvm,
-				   struct ieee80211_vif *vif)
+static bool iwl_mvm_rt_status(struct iwl_trans *trans, u32 base, u32 *err_id)
 {
-	u32 base = mvm->trans->lmac_error_event_table[0];
 	struct error_table_start {
 		/* cf. struct iwl_error_event_table */
 		u32 valid;
-		u32 error_id;
+		__le32 err_id;
 	} err_info;
 
-	iwl_trans_read_mem_bytes(mvm->trans, base,
-				 &err_info, sizeof(err_info));
+	if (!base)
+		return false;
 
-	if (err_info.valid &&
-	    err_info.error_id == RF_KILL_INDICATOR_FOR_WOWLAN) {
-		struct cfg80211_wowlan_wakeup wakeup = {
-			.rfkill_release = true,
-		};
-		ieee80211_report_wowlan_wakeup(vif, &wakeup, GFP_KERNEL);
+	iwl_trans_read_mem_bytes(trans, base,
+				 &err_info, sizeof(err_info));
+	if (err_info.valid && err_id)
+		*err_id = le32_to_cpu(err_info.err_id);
+
+	return !!err_info.valid;
+}
+
+static bool iwl_mvm_check_rt_status(struct iwl_mvm *mvm,
+				   struct ieee80211_vif *vif)
+{
+	u32 err_id;
+
+	/* check for lmac1 error */
+	if (iwl_mvm_rt_status(mvm->trans,
+			      mvm->trans->dbg.lmac_error_event_table[0],
+			      &err_id)) {
+		if (err_id == RF_KILL_INDICATOR_FOR_WOWLAN) {
+			struct cfg80211_wowlan_wakeup wakeup = {
+				.rfkill_release = true,
+			};
+			ieee80211_report_wowlan_wakeup(vif, &wakeup,
+						       GFP_KERNEL);
+		}
+		return true;
 	}
-	return err_info.valid;
+
+	/* check if we have lmac2 set and check for error */
+	if (iwl_mvm_rt_status(mvm->trans,
+			      mvm->trans->dbg.lmac_error_event_table[1], NULL))
+		return true;
+
+	/* check for umac error */
+	if (iwl_mvm_rt_status(mvm->trans,
+			      mvm->trans->dbg.umac_error_event_table, NULL))
+		return true;
+
+	return false;
 }
 
 static int __iwl_mvm_resume(struct iwl_mvm *mvm, bool test)
@@ -2039,10 +1966,28 @@ static int __iwl_mvm_resume(struct iwl_mvm *mvm, bool test)
 
 	mutex_lock(&mvm->mutex);
 
+	clear_bit(IWL_MVM_STATUS_IN_D3, &mvm->status);
+
 	/* get the BSS vif pointer again */
 	vif = iwl_mvm_get_bss_vif(mvm);
 	if (IS_ERR_OR_NULL(vif))
 		goto err;
+
+	iwl_fw_dbg_read_d3_debug_data(&mvm->fwrt);
+
+	if (iwl_mvm_check_rt_status(mvm, vif)) {
+		set_bit(STATUS_FW_ERROR, &mvm->trans->status);
+		iwl_mvm_dump_nic_error_log(mvm);
+		iwl_dbg_tlv_time_point(&mvm->fwrt,
+				       IWL_FW_INI_TIME_POINT_FW_ASSERT, NULL);
+		iwl_fw_dbg_collect_desc(&mvm->fwrt, &iwl_dump_desc_assert,
+					false, 0);
+		ret = 1;
+		goto err;
+	}
+
+	iwl_dbg_tlv_time_point(&mvm->fwrt, IWL_FW_INI_TIME_POINT_HOST_D3_END,
+			       NULL);
 
 	ret = iwl_trans_d3_resume(mvm->trans, &d3_status, test, !unified_image);
 	if (ret)
@@ -2053,25 +1998,39 @@ static int __iwl_mvm_resume(struct iwl_mvm *mvm, bool test)
 		goto err;
 	}
 
-	iwl_fw_dbg_read_d3_debug_data(&mvm->fwrt);
-	/* query SRAM first in case we want event logging */
-	iwl_mvm_read_d3_sram(mvm);
-
-	if (iwl_mvm_check_rt_status(mvm, vif)) {
-		set_bit(STATUS_FW_ERROR, &mvm->trans->status);
-		iwl_mvm_dump_nic_error_log(mvm);
-		iwl_fw_dbg_collect_desc(&mvm->fwrt, &iwl_dump_desc_assert,
-					false, 0);
-		ret = 1;
-		goto err;
-	}
-
 	if (d0i3_first) {
-		ret = iwl_mvm_send_cmd_pdu(mvm, D0I3_END_CMD, 0, 0, NULL);
+		struct iwl_host_cmd cmd = {
+			.id = D0I3_END_CMD,
+			.flags = CMD_WANT_SKB,
+		};
+		int len;
+
+		ret = iwl_mvm_send_cmd(mvm, &cmd);
 		if (ret < 0) {
 			IWL_ERR(mvm, "Failed to send D0I3_END_CMD first (%d)\n",
 				ret);
 			goto err;
+		}
+		switch (mvm->cmd_ver.d0i3_resp) {
+		case 0:
+			break;
+		case 1:
+			len = iwl_rx_packet_payload_len(cmd.resp_pkt);
+			if (len != sizeof(u32)) {
+				IWL_ERR(mvm,
+					"Error with D0I3_END_CMD response size (%d)\n",
+					len);
+				goto err;
+			}
+			if (IWL_D0I3_RESET_REQUIRE &
+			    le32_to_cpu(*(__le32 *)cmd.resp_pkt->data)) {
+				iwl_write32(mvm->trans, CSR_RESET,
+					    CSR_RESET_REG_FLAG_FORCE_NMI);
+				iwl_free_resp(&cmd);
+			}
+			break;
+		default:
+			WARN_ON(1);
 		}
 	}
 
@@ -2080,6 +2039,9 @@ static int __iwl_mvm_resume(struct iwl_mvm *mvm, bool test)
 	 * can play it back when we re-intiailize the D0 firmware
 	 */
 	iwl_mvm_update_changed_regdom(mvm);
+
+	/* Re-configure PPAG settings */
+	iwl_mvm_ppag_send_cmd(mvm);
 
 	if (!unified_image)
 		/*  Re-configure default SAR profile */
@@ -2137,14 +2099,6 @@ out:
 	 * 2. We are using a unified image but had an error while exiting D3
 	 */
 	set_bit(IWL_MVM_STATUS_HW_RESTART_REQUESTED, &mvm->status);
-	/*
-	 * When switching images we return 1, which causes mac80211
-	 * to do a reconfig with IEEE80211_RECONFIG_TYPE_RESTART.
-	 * This type of reconfig calls iwl_mvm_restart_complete(),
-	 * where we unref the IWL_MVM_REF_UCODE_DOWN, so we need
-	 * to take the reference here.
-	 */
-	iwl_mvm_ref(mvm, IWL_MVM_REF_UCODE_DOWN);
 
 	return 1;
 }
@@ -2156,53 +2110,12 @@ static int iwl_mvm_resume_d3(struct iwl_mvm *mvm)
 	return __iwl_mvm_resume(mvm, false);
 }
 
-static int iwl_mvm_resume_d0i3(struct iwl_mvm *mvm)
-{
-	bool exit_now;
-	enum iwl_d3_status d3_status;
-	struct iwl_trans *trans = mvm->trans;
-
-	iwl_trans_d3_resume(trans, &d3_status, false, false);
-
-	/*
-	 * make sure to clear D0I3_DEFER_WAKEUP before
-	 * calling iwl_trans_resume(), which might wait
-	 * for d0i3 exit completion.
-	 */
-	mutex_lock(&mvm->d0i3_suspend_mutex);
-	__clear_bit(D0I3_DEFER_WAKEUP, &mvm->d0i3_suspend_flags);
-	exit_now = __test_and_clear_bit(D0I3_PENDING_WAKEUP,
-					&mvm->d0i3_suspend_flags);
-	mutex_unlock(&mvm->d0i3_suspend_mutex);
-	if (exit_now) {
-		IWL_DEBUG_RPM(mvm, "Run deferred d0i3 exit\n");
-		_iwl_mvm_exit_d0i3(mvm);
-	}
-
-	iwl_trans_resume(trans);
-
-	if (iwl_mvm_enter_d0i3_on_suspend(mvm)) {
-		int ret = iwl_mvm_exit_d0i3(mvm->hw->priv);
-
-		if (ret)
-			return ret;
-		/*
-		 * d0i3 exit will be deferred until reconfig_complete.
-		 * make sure there we are out of d0i3.
-		 */
-	}
-	return 0;
-}
-
 int iwl_mvm_resume(struct ieee80211_hw *hw)
 {
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 	int ret;
 
-	if (mvm->trans->system_pm_mode == IWL_PLAT_PM_MODE_D0I3)
-		ret = iwl_mvm_resume_d0i3(mvm);
-	else
-		ret = iwl_mvm_resume_d3(mvm);
+	ret = iwl_mvm_resume_d3(mvm);
 
 	mvm->trans->system_pm_mode = IWL_PLAT_PM_MODE_DISABLED;
 

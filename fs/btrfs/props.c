@@ -257,11 +257,7 @@ static int prop_compression_validate(const char *value, size_t len)
 	if (!value)
 		return 0;
 
-	if (!strncmp("lzo", value, 3))
-		return 0;
-	else if (!strncmp("zlib", value, 4))
-		return 0;
-	else if (!strncmp("zstd", value, 4))
+	if (btrfs_compress_is_valid_type(value, len))
 		return 0;
 
 	return -EINVAL;
@@ -332,6 +328,7 @@ static int inherit_props(struct btrfs_trans_handle *trans,
 	struct btrfs_fs_info *fs_info = root->fs_info;
 	int ret;
 	int i;
+	bool need_reserve = false;
 
 	if (!test_bit(BTRFS_INODE_HAS_PROPS,
 		      &BTRFS_I(parent)->runtime_flags))
@@ -340,7 +337,7 @@ static int inherit_props(struct btrfs_trans_handle *trans,
 	for (i = 0; i < ARRAY_SIZE(prop_handlers); i++) {
 		const struct prop_handler *h = &prop_handlers[i];
 		const char *value;
-		u64 num_bytes;
+		u64 num_bytes = 0;
 
 		if (!h->inheritable)
 			continue;
@@ -357,11 +354,20 @@ static int inherit_props(struct btrfs_trans_handle *trans,
 		if (ret)
 			continue;
 
-		num_bytes = btrfs_calc_trans_metadata_size(fs_info, 1);
-		ret = btrfs_block_rsv_add(root, trans->block_rsv,
-					  num_bytes, BTRFS_RESERVE_NO_FLUSH);
-		if (ret)
-			return ret;
+		/*
+		 * Currently callers should be reserving 1 item for properties,
+		 * since we only have 1 property that we currently support.  If
+		 * we add more in the future we need to try and reserve more
+		 * space for them.  But we should also revisit how we do space
+		 * reservations if we do add more properties in the future.
+		 */
+		if (need_reserve) {
+			num_bytes = btrfs_calc_insert_metadata_size(fs_info, 1);
+			ret = btrfs_block_rsv_add(root, trans->block_rsv,
+					num_bytes, BTRFS_RESERVE_NO_FLUSH);
+			if (ret)
+				return ret;
+		}
 
 		ret = btrfs_setxattr(trans, inode, h->xattr_name, value,
 				     strlen(value), 0);
@@ -375,9 +381,13 @@ static int inherit_props(struct btrfs_trans_handle *trans,
 					&BTRFS_I(inode)->runtime_flags);
 		}
 
-		btrfs_block_rsv_release(fs_info, trans->block_rsv, num_bytes);
-		if (ret)
-			return ret;
+		if (need_reserve) {
+			btrfs_block_rsv_release(fs_info, trans->block_rsv,
+					num_bytes, NULL);
+			if (ret)
+				return ret;
+		}
+		need_reserve = true;
 	}
 
 	return 0;
@@ -398,19 +408,14 @@ int btrfs_subvol_inherit_props(struct btrfs_trans_handle *trans,
 			       struct btrfs_root *parent_root)
 {
 	struct super_block *sb = root->fs_info->sb;
-	struct btrfs_key key;
 	struct inode *parent_inode, *child_inode;
 	int ret;
 
-	key.objectid = BTRFS_FIRST_FREE_OBJECTID;
-	key.type = BTRFS_INODE_ITEM_KEY;
-	key.offset = 0;
-
-	parent_inode = btrfs_iget(sb, &key, parent_root, NULL);
+	parent_inode = btrfs_iget(sb, BTRFS_FIRST_FREE_OBJECTID, parent_root);
 	if (IS_ERR(parent_inode))
 		return PTR_ERR(parent_inode);
 
-	child_inode = btrfs_iget(sb, &key, root, NULL);
+	child_inode = btrfs_iget(sb, BTRFS_FIRST_FREE_OBJECTID, root);
 	if (IS_ERR(child_inode)) {
 		iput(parent_inode);
 		return PTR_ERR(child_inode);
@@ -426,8 +431,6 @@ int btrfs_subvol_inherit_props(struct btrfs_trans_handle *trans,
 void __init btrfs_props_init(void)
 {
 	int i;
-
-	hash_init(prop_handlers_ht);
 
 	for (i = 0; i < ARRAY_SIZE(prop_handlers); i++) {
 		struct prop_handler *p = &prop_handlers[i];

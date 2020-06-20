@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * PC Watchdog Driver
  * by Ken Hollis (khollis@bitgate.com)
@@ -650,7 +651,7 @@ static long pcwd_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -EINVAL;
 
 		pcwd_keepalive();
-		/* Fall */
+		/* Fall through */
 
 	case WDIOC_GETTIMEOUT:
 		return put_user(heartbeat, argp);
@@ -751,6 +752,7 @@ static const struct file_operations pcwd_fops = {
 	.llseek		= no_llseek,
 	.write		= pcwd_write,
 	.unlocked_ioctl	= pcwd_ioctl,
+	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= pcwd_open,
 	.release	= pcwd_close,
 };

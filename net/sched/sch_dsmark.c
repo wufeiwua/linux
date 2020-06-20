@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /* net/sched/sch_dsmark.c - Differentiated Services field marker */
 
 /* Written 1998-2000 by Werner Almesberger, EPFL ICA */
@@ -360,6 +361,8 @@ static int dsmark_init(struct Qdisc *sch, struct nlattr *opt,
 		goto errout;
 
 	err = -EINVAL;
+	if (!tb[TCA_DSMARK_INDICES])
+		goto errout;
 	indices = nla_get_u16(tb[TCA_DSMARK_INDICES]);
 
 	if (hweight32(indices) != 1)

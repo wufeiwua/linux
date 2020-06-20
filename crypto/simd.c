@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Shared crypto simd helpers
  *
@@ -8,19 +9,6 @@
  * Based on aesni-intel_glue.c by:
  *  Copyright (C) 2008, Intel Corp.
  *    Author: Huang Ying <ying.huang@intel.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -64,15 +52,11 @@ static int simd_skcipher_setkey(struct crypto_skcipher *tfm, const u8 *key,
 {
 	struct simd_skcipher_ctx *ctx = crypto_skcipher_ctx(tfm);
 	struct crypto_skcipher *child = &ctx->cryptd_tfm->base;
-	int err;
 
 	crypto_skcipher_clear_flags(child, CRYPTO_TFM_REQ_MASK);
 	crypto_skcipher_set_flags(child, crypto_skcipher_get_flags(tfm) &
 					 CRYPTO_TFM_REQ_MASK);
-	err = crypto_skcipher_setkey(child, key, key_len);
-	crypto_skcipher_set_flags(tfm, crypto_skcipher_get_flags(child) &
-				       CRYPTO_TFM_RES_MASK);
-	return err;
+	return crypto_skcipher_setkey(child, key, key_len);
 }
 
 static int simd_skcipher_encrypt(struct skcipher_request *req)
@@ -307,15 +291,11 @@ static int simd_aead_setkey(struct crypto_aead *tfm, const u8 *key,
 {
 	struct simd_aead_ctx *ctx = crypto_aead_ctx(tfm);
 	struct crypto_aead *child = &ctx->cryptd_tfm->base;
-	int err;
 
 	crypto_aead_clear_flags(child, CRYPTO_TFM_REQ_MASK);
 	crypto_aead_set_flags(child, crypto_aead_get_flags(tfm) &
 				     CRYPTO_TFM_REQ_MASK);
-	err = crypto_aead_setkey(child, key, key_len);
-	crypto_aead_set_flags(tfm, crypto_aead_get_flags(child) &
-				   CRYPTO_TFM_RES_MASK);
-	return err;
+	return crypto_aead_setkey(child, key, key_len);
 }
 
 static int simd_aead_setauthsize(struct crypto_aead *tfm, unsigned int authsize)

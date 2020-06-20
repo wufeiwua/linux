@@ -1,22 +1,9 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * pmbus.h - Common defines and structures for PMBus devices
  *
  * Copyright (c) 2010, 2011 Ericsson AB.
  * Copyright (c) 2012 Guenter Roeck
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
 #ifndef PMBUS_H
@@ -34,6 +21,8 @@ enum pmbus_regs {
 	PMBUS_ON_OFF_CONFIG		= 0x02,
 	PMBUS_CLEAR_FAULTS		= 0x03,
 	PMBUS_PHASE			= 0x04,
+
+	PMBUS_WRITE_PROTECT		= 0x10,
 
 	PMBUS_CAPABILITY		= 0x19,
 	PMBUS_QUERY			= 0x1A,
@@ -129,6 +118,9 @@ enum pmbus_regs {
 	PMBUS_MFR_LOCATION		= 0x9C,
 	PMBUS_MFR_DATE			= 0x9D,
 	PMBUS_MFR_SERIAL		= 0x9E,
+
+	PMBUS_IC_DEVICE_ID		= 0xAD,
+	PMBUS_IC_DEVICE_REV		= 0xAE,
 
 /*
  * Virtual registers.
@@ -237,6 +229,15 @@ enum pmbus_regs {
  * OPERATION
  */
 #define PB_OPERATION_CONTROL_ON		BIT(7)
+
+/*
+ * WRITE_PROTECT
+ */
+#define PB_WP_ALL	BIT(7)	/* all but WRITE_PROTECT */
+#define PB_WP_OP	BIT(6)	/* all but WP, OPERATION, PAGE */
+#define PB_WP_VOUT	BIT(5)	/* all but WP, OPERATION, PAGE, VOUT, ON_OFF */
+
+#define PB_WP_ANY	(PB_WP_ALL | PB_WP_OP | PB_WP_VOUT)
 
 /*
  * CAPABILITY
@@ -361,6 +362,7 @@ enum pmbus_sensor_classes {
 };
 
 #define PMBUS_PAGES	32	/* Per PMBus specification */
+#define PMBUS_PHASES	8	/* Maximum number of phases per page */
 
 /* Functionality bit mask */
 #define PMBUS_HAVE_VIN		BIT(0)
@@ -387,15 +389,17 @@ enum pmbus_sensor_classes {
 #define PMBUS_HAVE_PWM34	BIT(21)
 #define PMBUS_HAVE_SAMPLES	BIT(22)
 
-#define PMBUS_PAGE_VIRTUAL	BIT(31)
+#define PMBUS_PHASE_VIRTUAL	BIT(30)	/* Phases on this page are virtual */
+#define PMBUS_PAGE_VIRTUAL	BIT(31)	/* Page is virtual */
 
 enum pmbus_data_format { linear = 0, direct, vid };
-enum vrm_version { vr11 = 0, vr12, vr13 };
+enum vrm_version { vr11 = 0, vr12, vr13, imvp9, amd625mv };
 
 struct pmbus_driver_info {
 	int pages;		/* Total number of pages */
+	u8 phases[PMBUS_PAGES];	/* Number of phases per page */
 	enum pmbus_data_format format[PSC_NUM_CLASSES];
-	enum vrm_version vrm_version;
+	enum vrm_version vrm_version[PMBUS_PAGES]; /* vrm version per page */
 	/*
 	 * Support one set of coefficients for each sensor type
 	 * Used for chips providing data in direct mode.
@@ -405,6 +409,7 @@ struct pmbus_driver_info {
 	int R[PSC_NUM_CLASSES];	/* exponent */
 
 	u32 func[PMBUS_PAGES];	/* Functionality, per page */
+	u32 pfunc[PMBUS_PHASES];/* Functionality, per phase */
 	/*
 	 * The following functions map manufacturing specific register values
 	 * to PMBus standard register values. Specify only if mapping is
@@ -417,7 +422,8 @@ struct pmbus_driver_info {
 	 * the standard register.
 	 */
 	int (*read_byte_data)(struct i2c_client *client, int page, int reg);
-	int (*read_word_data)(struct i2c_client *client, int page, int reg);
+	int (*read_word_data)(struct i2c_client *client, int page, int phase,
+			      int reg);
 	int (*write_word_data)(struct i2c_client *client, int page, int reg,
 			       u16 word);
 	int (*write_byte)(struct i2c_client *client, int page, u8 value);
@@ -456,9 +462,11 @@ extern const struct regulator_ops pmbus_regulator_ops;
 /* Function declarations */
 
 void pmbus_clear_cache(struct i2c_client *client);
-int pmbus_set_page(struct i2c_client *client, int page);
-int pmbus_read_word_data(struct i2c_client *client, int page, u8 reg);
-int pmbus_write_word_data(struct i2c_client *client, int page, u8 reg, u16 word);
+int pmbus_set_page(struct i2c_client *client, int page, int phase);
+int pmbus_read_word_data(struct i2c_client *client, int page, int phase,
+			 u8 reg);
+int pmbus_write_word_data(struct i2c_client *client, int page, u8 reg,
+			  u16 word);
 int pmbus_read_byte_data(struct i2c_client *client, int page, u8 reg);
 int pmbus_write_byte(struct i2c_client *client, int page, u8 value);
 int pmbus_write_byte_data(struct i2c_client *client, int page, u8 reg,

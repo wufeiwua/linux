@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 #include <net/ip.h>
 #include <net/tcp.h>
 
@@ -59,6 +60,9 @@ static int nft_osf_init(const struct nft_ctx *ctx,
 	u32 flags;
 	int err;
 	u8 ttl;
+
+	if (!tb[NFTA_OSF_DREG])
+		return -EINVAL;
 
 	if (tb[NFTA_OSF_TTL]) {
 		ttl = nla_get_u8(tb[NFTA_OSF_TTL]);

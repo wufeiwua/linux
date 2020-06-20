@@ -1,12 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /* AFS tracepoints
  *
  * Copyright (C) 2016 Red Hat, Inc. All Rights Reserved.
  * Written by David Howells (dhowells@redhat.com)
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public Licence
- * as published by the Free Software Foundation; either version
- * 2 of the Licence, or (at your option) any later version.
  */
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM afs
@@ -29,6 +25,46 @@ enum afs_call_trace {
 	afs_call_trace_put,
 	afs_call_trace_wake,
 	afs_call_trace_work,
+};
+
+enum afs_server_trace {
+	afs_server_trace_alloc,
+	afs_server_trace_callback,
+	afs_server_trace_destroy,
+	afs_server_trace_free,
+	afs_server_trace_gc,
+	afs_server_trace_get_by_addr,
+	afs_server_trace_get_by_uuid,
+	afs_server_trace_get_caps,
+	afs_server_trace_get_install,
+	afs_server_trace_get_new_cbi,
+	afs_server_trace_get_probe,
+	afs_server_trace_give_up_cb,
+	afs_server_trace_put_call,
+	afs_server_trace_put_cbi,
+	afs_server_trace_put_find_rsq,
+	afs_server_trace_put_probe,
+	afs_server_trace_put_slist,
+	afs_server_trace_put_slist_isort,
+	afs_server_trace_put_uuid_rsq,
+	afs_server_trace_update,
+};
+
+enum afs_volume_trace {
+	afs_volume_trace_alloc,
+	afs_volume_trace_free,
+	afs_volume_trace_get_alloc_sbi,
+	afs_volume_trace_get_cell_insert,
+	afs_volume_trace_get_new_op,
+	afs_volume_trace_get_query_alias,
+	afs_volume_trace_put_cell_dup,
+	afs_volume_trace_put_cell_root,
+	afs_volume_trace_put_destroy_sbi,
+	afs_volume_trace_put_free_fc,
+	afs_volume_trace_put_put_op,
+	afs_volume_trace_put_query_alias,
+	afs_volume_trace_put_validate_fc,
+	afs_volume_trace_remove,
 };
 
 enum afs_fs_operation {
@@ -92,6 +128,7 @@ enum afs_vl_operation {
 	afs_VL_GetEntryByNameU	= 527,		/* AFS Get Vol Entry By Name operation ID */
 	afs_VL_GetAddrsU	= 533,		/* AFS Get FS server addresses */
 	afs_YFSVL_GetEndpoints	= 64002,	/* YFS Get FS & Vol server addresses */
+	afs_YFSVL_GetCellName	= 64014,	/* YFS Get actual cell name */
 	afs_VL_GetCapabilities	= 65537,	/* AFS Get VL server capabilities */
 };
 
@@ -124,6 +161,7 @@ enum afs_eproto_cause {
 	afs_eproto_bad_status,
 	afs_eproto_cb_count,
 	afs_eproto_cb_fid_count,
+	afs_eproto_cellname_len,
 	afs_eproto_file_type,
 	afs_eproto_ibulkst_cb_count,
 	afs_eproto_ibulkst_count,
@@ -195,6 +233,17 @@ enum afs_flock_operation {
 	afs_flock_op_wake,
 };
 
+enum afs_cb_break_reason {
+	afs_cb_break_no_break,
+	afs_cb_break_for_callback,
+	afs_cb_break_for_deleted,
+	afs_cb_break_for_lapsed,
+	afs_cb_break_for_unlink,
+	afs_cb_break_for_vsbreak,
+	afs_cb_break_for_volume_callback,
+	afs_cb_break_for_zap,
+};
+
 #endif /* end __AFS_DECLARE_TRACE_ENUMS_ONCE_ONLY */
 
 /*
@@ -206,7 +255,45 @@ enum afs_flock_operation {
 	EM(afs_call_trace_get,			"GET  ") \
 	EM(afs_call_trace_put,			"PUT  ") \
 	EM(afs_call_trace_wake,			"WAKE ") \
-	E_(afs_call_trace_work,			"WORK ")
+	E_(afs_call_trace_work,			"QUEUE")
+
+#define afs_server_traces \
+	EM(afs_server_trace_alloc,		"ALLOC    ") \
+	EM(afs_server_trace_callback,		"CALLBACK ") \
+	EM(afs_server_trace_destroy,		"DESTROY  ") \
+	EM(afs_server_trace_free,		"FREE     ") \
+	EM(afs_server_trace_gc,			"GC       ") \
+	EM(afs_server_trace_get_by_addr,	"GET addr ") \
+	EM(afs_server_trace_get_by_uuid,	"GET uuid ") \
+	EM(afs_server_trace_get_caps,		"GET caps ") \
+	EM(afs_server_trace_get_install,	"GET inst ") \
+	EM(afs_server_trace_get_new_cbi,	"GET cbi  ") \
+	EM(afs_server_trace_get_probe,		"GET probe") \
+	EM(afs_server_trace_give_up_cb,		"giveup-cb") \
+	EM(afs_server_trace_put_call,		"PUT call ") \
+	EM(afs_server_trace_put_cbi,		"PUT cbi  ") \
+	EM(afs_server_trace_put_find_rsq,	"PUT f-rsq") \
+	EM(afs_server_trace_put_probe,		"PUT probe") \
+	EM(afs_server_trace_put_slist,		"PUT slist") \
+	EM(afs_server_trace_put_slist_isort,	"PUT isort") \
+	EM(afs_server_trace_put_uuid_rsq,	"PUT u-req") \
+	E_(afs_server_trace_update,		"UPDATE")
+
+#define afs_volume_traces \
+	EM(afs_volume_trace_alloc,		"ALLOC         ") \
+	EM(afs_volume_trace_free,		"FREE          ") \
+	EM(afs_volume_trace_get_alloc_sbi,	"GET sbi-alloc ") \
+	EM(afs_volume_trace_get_cell_insert,	"GET cell-insrt") \
+	EM(afs_volume_trace_get_new_op,		"GET op-new    ") \
+	EM(afs_volume_trace_get_query_alias,	"GET cell-alias") \
+	EM(afs_volume_trace_put_cell_dup,	"PUT cell-dup  ") \
+	EM(afs_volume_trace_put_cell_root,	"PUT cell-root ") \
+	EM(afs_volume_trace_put_destroy_sbi,	"PUT sbi-destry") \
+	EM(afs_volume_trace_put_free_fc,	"PUT fc-free   ") \
+	EM(afs_volume_trace_put_put_op,		"PUT op-put    ") \
+	EM(afs_volume_trace_put_query_alias,	"PUT cell-alias") \
+	EM(afs_volume_trace_put_validate_fc,	"PUT fc-validat") \
+	E_(afs_volume_trace_remove,		"REMOVE        ")
 
 #define afs_fs_operations \
 	EM(afs_FS_FetchData,			"FS.FetchData") \
@@ -264,6 +351,7 @@ enum afs_flock_operation {
 	EM(afs_VL_GetEntryByNameU,		"VL.GetEntryByNameU") \
 	EM(afs_VL_GetAddrsU,			"VL.GetAddrsU") \
 	EM(afs_YFSVL_GetEndpoints,		"YFSVL.GetEndpoints") \
+	EM(afs_YFSVL_GetCellName,		"YFSVL.GetCellName") \
 	E_(afs_VL_GetCapabilities,		"VL.GetCapabilities")
 
 #define afs_edit_dir_ops				  \
@@ -293,6 +381,7 @@ enum afs_flock_operation {
 	EM(afs_eproto_bad_status,	"BadStatus") \
 	EM(afs_eproto_cb_count,		"CbCount") \
 	EM(afs_eproto_cb_fid_count,	"CbFidCount") \
+	EM(afs_eproto_cellname_len,	"CellNameLen") \
 	EM(afs_eproto_file_type,	"FileTYpe") \
 	EM(afs_eproto_ibulkst_cb_count,	"IBS.CbCount") \
 	EM(afs_eproto_ibulkst_count,	"IBS.FidCount") \
@@ -374,6 +463,16 @@ enum afs_flock_operation {
 	EM(afs_flock_op_unlock,			"UNLOCK  ")		\
 	E_(afs_flock_op_wake,			"WAKE    ")
 
+#define afs_cb_break_reasons						\
+	EM(afs_cb_break_no_break,		"no-break")		\
+	EM(afs_cb_break_for_callback,		"break-cb")		\
+	EM(afs_cb_break_for_deleted,		"break-del")		\
+	EM(afs_cb_break_for_lapsed,		"break-lapsed")		\
+	EM(afs_cb_break_for_unlink,		"break-unlink")		\
+	EM(afs_cb_break_for_vsbreak,		"break-vs")		\
+	EM(afs_cb_break_for_volume_callback,	"break-v-cb")		\
+	E_(afs_cb_break_for_zap,		"break-zap")
+
 /*
  * Export enum symbols via userspace.
  */
@@ -383,6 +482,7 @@ enum afs_flock_operation {
 #define E_(a, b) TRACE_DEFINE_ENUM(a);
 
 afs_call_traces;
+afs_server_traces;
 afs_fs_operations;
 afs_vl_operations;
 afs_edit_dir_ops;
@@ -392,6 +492,7 @@ afs_io_errors;
 afs_file_errors;
 afs_flock_types;
 afs_flock_operations;
+afs_cb_break_reasons;
 
 /*
  * Now redefine the EM() and E_() macros to map the enums to the strings that
@@ -578,7 +679,7 @@ TRACE_EVENT(afs_make_fs_calli,
 
 TRACE_EVENT(afs_make_fs_call1,
 	    TP_PROTO(struct afs_call *call, const struct afs_fid *fid,
-		     const char *name),
+		     const struct qstr *name),
 
 	    TP_ARGS(call, fid, name),
 
@@ -590,8 +691,7 @@ TRACE_EVENT(afs_make_fs_call1,
 			     ),
 
 	    TP_fast_assign(
-		    int __len = strlen(name);
-		    __len = min(__len, 23);
+		    unsigned int __len = min_t(unsigned int, name->len, 23);
 		    __entry->call = call->debug_id;
 		    __entry->op = call->operation_ID;
 		    if (fid) {
@@ -601,7 +701,7 @@ TRACE_EVENT(afs_make_fs_call1,
 			    __entry->fid.vnode = 0;
 			    __entry->fid.unique = 0;
 		    }
-		    memcpy(__entry->name, name, __len);
+		    memcpy(__entry->name, name->name, __len);
 		    __entry->name[__len] = 0;
 			   ),
 
@@ -616,7 +716,7 @@ TRACE_EVENT(afs_make_fs_call1,
 
 TRACE_EVENT(afs_make_fs_call2,
 	    TP_PROTO(struct afs_call *call, const struct afs_fid *fid,
-		     const char *name, const char *name2),
+		     const struct qstr *name, const struct qstr *name2),
 
 	    TP_ARGS(call, fid, name, name2),
 
@@ -629,10 +729,8 @@ TRACE_EVENT(afs_make_fs_call2,
 			     ),
 
 	    TP_fast_assign(
-		    int __len = strlen(name);
-		    int __len2 = strlen(name2);
-		    __len = min(__len, 23);
-		    __len2 = min(__len2, 23);
+		    unsigned int __len = min_t(unsigned int, name->len, 23);
+		    unsigned int __len2 = min_t(unsigned int, name2->len, 23);
 		    __entry->call = call->debug_id;
 		    __entry->op = call->operation_ID;
 		    if (fid) {
@@ -642,9 +740,9 @@ TRACE_EVENT(afs_make_fs_call2,
 			    __entry->fid.vnode = 0;
 			    __entry->fid.unique = 0;
 		    }
-		    memcpy(__entry->name, name, __len);
+		    memcpy(__entry->name, name->name, __len);
 		    __entry->name[__len] = 0;
-		    memcpy(__entry->name2, name2, __len2);
+		    memcpy(__entry->name2, name2->name, __len2);
 		    __entry->name2[__len2] = 0;
 			   ),
 
@@ -857,9 +955,9 @@ TRACE_EVENT(afs_call_state,
 
 TRACE_EVENT(afs_lookup,
 	    TP_PROTO(struct afs_vnode *dvnode, const struct qstr *name,
-		     struct afs_vnode *vnode),
+		     struct afs_fid *fid),
 
-	    TP_ARGS(dvnode, name, vnode),
+	    TP_ARGS(dvnode, name, fid),
 
 	    TP_STRUCT__entry(
 		    __field_struct(struct afs_fid,	dfid		)
@@ -870,13 +968,7 @@ TRACE_EVENT(afs_lookup,
 	    TP_fast_assign(
 		    int __len = min_t(int, name->len, 23);
 		    __entry->dfid = dvnode->fid;
-		    if (vnode) {
-			    __entry->fid = vnode->fid;
-		    } else {
-			    __entry->fid.vid = 0;
-			    __entry->fid.vnode = 0;
-			    __entry->fid.unique = 0;
-		    }
+		    __entry->fid = *fid;
 		    memcpy(__entry->name, name->name, __len);
 		    __entry->name[__len] = 0;
 			   ),
@@ -936,24 +1028,22 @@ TRACE_EVENT(afs_edit_dir,
 	    );
 
 TRACE_EVENT(afs_protocol_error,
-	    TP_PROTO(struct afs_call *call, int error, enum afs_eproto_cause cause),
+	    TP_PROTO(struct afs_call *call, enum afs_eproto_cause cause),
 
-	    TP_ARGS(call, error, cause),
+	    TP_ARGS(call, cause),
 
 	    TP_STRUCT__entry(
 		    __field(unsigned int,		call		)
-		    __field(int,			error		)
 		    __field(enum afs_eproto_cause,	cause		)
 			     ),
 
 	    TP_fast_assign(
 		    __entry->call = call ? call->debug_id : 0;
-		    __entry->error = error;
 		    __entry->cause = cause;
 			   ),
 
-	    TP_printk("c=%08x r=%d %s",
-		      __entry->call, __entry->error,
+	    TP_printk("c=%08x %s",
+		      __entry->call,
 		      __print_symbolic(__entry->cause, afs_eproto_causes))
 	    );
 
@@ -1169,6 +1259,103 @@ TRACE_EVENT(afs_get_tree,
 
 	    TP_printk("--- MOUNT %s:%s %llx",
 		      __entry->cell, __entry->volume, __entry->vid)
+	    );
+
+TRACE_EVENT(afs_cb_break,
+	    TP_PROTO(struct afs_fid *fid, unsigned int cb_break,
+		     enum afs_cb_break_reason reason, bool skipped),
+
+	    TP_ARGS(fid, cb_break, reason, skipped),
+
+	    TP_STRUCT__entry(
+		    __field_struct(struct afs_fid,	fid		)
+		    __field(unsigned int,		cb_break	)
+		    __field(enum afs_cb_break_reason,	reason		)
+		    __field(bool,			skipped		)
+			     ),
+
+	    TP_fast_assign(
+		    __entry->fid	= *fid;
+		    __entry->cb_break	= cb_break;
+		    __entry->reason	= reason;
+		    __entry->skipped	= skipped;
+			   ),
+
+	    TP_printk("%llx:%llx:%x b=%x s=%u %s",
+		      __entry->fid.vid, __entry->fid.vnode, __entry->fid.unique,
+		      __entry->cb_break,
+		      __entry->skipped,
+		      __print_symbolic(__entry->reason, afs_cb_break_reasons))
+	    );
+
+TRACE_EVENT(afs_cb_miss,
+	    TP_PROTO(struct afs_fid *fid, enum afs_cb_break_reason reason),
+
+	    TP_ARGS(fid, reason),
+
+	    TP_STRUCT__entry(
+		    __field_struct(struct afs_fid,	fid		)
+		    __field(enum afs_cb_break_reason,	reason		)
+			     ),
+
+	    TP_fast_assign(
+		    __entry->fid	= *fid;
+		    __entry->reason	= reason;
+			   ),
+
+	    TP_printk(" %llx:%llx:%x %s",
+		      __entry->fid.vid, __entry->fid.vnode, __entry->fid.unique,
+		      __print_symbolic(__entry->reason, afs_cb_break_reasons))
+	    );
+
+TRACE_EVENT(afs_server,
+	    TP_PROTO(struct afs_server *server, int ref, int active,
+		     enum afs_server_trace reason),
+
+	    TP_ARGS(server, ref, active, reason),
+
+	    TP_STRUCT__entry(
+		    __field(unsigned int,		server		)
+		    __field(int,			ref		)
+		    __field(int,			active		)
+		    __field(int,			reason		)
+			     ),
+
+	    TP_fast_assign(
+		    __entry->server = server->debug_id;
+		    __entry->ref = ref;
+		    __entry->active = active;
+		    __entry->reason = reason;
+			   ),
+
+	    TP_printk("s=%08x %s u=%d a=%d",
+		      __entry->server,
+		      __print_symbolic(__entry->reason, afs_server_traces),
+		      __entry->ref,
+		      __entry->active)
+	    );
+
+TRACE_EVENT(afs_volume,
+	    TP_PROTO(afs_volid_t vid, int ref, enum afs_volume_trace reason),
+
+	    TP_ARGS(vid, ref, reason),
+
+	    TP_STRUCT__entry(
+		    __field(afs_volid_t,		vid		)
+		    __field(int,			ref		)
+		    __field(enum afs_volume_trace,	reason		)
+			     ),
+
+	    TP_fast_assign(
+		    __entry->vid = vid;
+		    __entry->ref = ref;
+		    __entry->reason = reason;
+			   ),
+
+	    TP_printk("V=%llx %s u=%d",
+		      __entry->vid,
+		      __print_symbolic(__entry->reason, afs_volume_traces),
+		      __entry->ref)
 	    );
 
 #endif /* _TRACE_AFS_H */

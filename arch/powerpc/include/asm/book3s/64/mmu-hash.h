@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 #ifndef _ASM_POWERPC_BOOK3S_64_MMU_HASH_H_
 #define _ASM_POWERPC_BOOK3S_64_MMU_HASH_H_
 /*
@@ -5,11 +6,6 @@
  *
  * Dave Engebretsen & Mike Corrigan <{engebret|mikejc}@us.ibm.com>
  *   PPC64 rework.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version
- * 2 of the License, or (at your option) any later version.
  */
 
 #include <asm/page.h>
@@ -604,8 +600,11 @@ extern void slb_set_size(u16 size);
  *
  */
 #define MAX_USER_CONTEXT	((ASM_CONST(1) << CONTEXT_BITS) - 2)
+
+// The + 2 accounts for INVALID_REGION and 1 more to avoid overlap with kernel
 #define MIN_USER_CONTEXT	(MAX_KERNEL_CTX_CNT + MAX_VMALLOC_CTX_CNT + \
-				 MAX_IO_CTX_CNT + MAX_VMEMMAP_CTX_CNT)
+				 MAX_IO_CTX_CNT + MAX_VMEMMAP_CTX_CNT + 2)
+
 /*
  * For platforms that support on 65bit VA we limit the context bits
  */
